@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <vector>
+#include<cfloat>
+#include <fstream>
 #include "Util.cpp"
 #include "Data.cpp"
 
@@ -25,18 +27,32 @@ bool checkIfNewClustersAreDifferent(std::vector<std::vector<double>> new_centroi
     return false;
 }
 
-int main()
+int main(int argc, char** argv)
 {
     int32_t k = 0;
-    std::vector<std::vector<double>> dataset_array = { {1.0, 1.0},{2.0, 1.0},{4.0, 3.0},{5.0, 4.0} };
+    /*Read from a CSV file */
+    std::string filename = "";
+    std::vector<std::vector<double>> input;// = { {1.0, 1.0},{2.0, 1.0},{4.0, 3.0},{5.0, 4.0} };
+    if(argc > 1) {
+        filename = argv[1];
+        std::ifstream csv_file;
+        csv_file.open(filename);
+        input = Util::parseCSVfile(csv_file);	
+
+    }
+    else {
+        std::cerr<<"Please provide the path to the CSV file "<<std::endl;
+        return 0;
+    }
+
     std::vector<data<double>> dataset;
     bool repeatClustering = true;
 
-    int32_t number_of_features = dataset_array[0].size();
-    for (int i = 0; i < dataset_array.size(); i++) {
+    int32_t number_of_features = input[0].size();
+    for (int i = 0; i < input.size(); i++) {
 
 
-        dataset.push_back(data<double>(dataset_array[i]));
+        dataset.push_back(data<double>(input[i]));
 
     }
 
