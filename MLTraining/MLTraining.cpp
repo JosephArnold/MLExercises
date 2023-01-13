@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <vector>
-#include<cfloat>
+#include <cfloat>
 #include <fstream>
 #include "Util.cpp"
 #include "Data.cpp"
@@ -33,15 +33,15 @@ int main(int argc, char** argv)
     /*Read from a CSV file */
     std::string filename = "";
     std::vector<std::vector<double>> input;// = { {1.0, 1.0},{2.0, 1.0},{4.0, 3.0},{5.0, 4.0} };
-    if(argc > 1) {
+    if(argc > 2) {
         filename = argv[1];
         std::ifstream csv_file;
         csv_file.open(filename);
         input = Util::parseCSVfile(csv_file);	
-
+        k = std::stoi(argv[2]);
     }
     else {
-        std::cerr<<"Please provide the path to the CSV file "<<std::endl;
+        std::cerr<<"Please provide the correct path to the CSV file and the number of clusters "<<std::endl;
         return 0;
     }
 
@@ -55,9 +55,6 @@ int main(int argc, char** argv)
         dataset.push_back(data<double>(input[i]));
 
     }
-
-    std::cout << "Enter the number of clusters" << std::endl;
-    std::cin >> k;
 
     /*Distance matrix will have k rows and n (size of dataset) columns */
     uint64_t n = static_cast<int64_t>(dataset.size());
@@ -97,7 +94,7 @@ int main(int argc, char** argv)
             }
 
         }
-
+#if 0
         std::cout << " printing distance matrix " << std::endl;
         for (uint32_t i = 0; i < k; i++) {
 
@@ -109,7 +106,7 @@ int main(int argc, char** argv)
             std::cout<<std::endl;
 
         }
-
+#endif
     /*assign each dataset to the nearest centroid */
 
     for (uint32_t i = 0; i < n; i++) {
@@ -139,7 +136,6 @@ int main(int argc, char** argv)
     */
     /*compute centres of clusters */
     std::vector<std::vector<double>> new_centroid_centres(k, std::vector<double>(number_of_features, 0));
-
 
     /*Compute centroid of clusters based on the datapoints assigned to them*/
     for (uint32_t i = 0; i < n; i++) {
@@ -178,7 +174,6 @@ int main(int argc, char** argv)
     /*check if the new centroid centres are the same as the exisitng centroid centres*/
     repeatClustering = checkIfNewClustersAreDifferent(new_centroid_centres, centroid_centres, k, number_of_features);
 
-    std::cout << " repeat cluster check done " << std::endl;
     /*Reassign cluster centres */
 
     for (int32_t i = 0; i < k; i++) {
