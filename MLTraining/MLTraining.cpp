@@ -30,15 +30,18 @@ bool checkIfNewClustersAreDifferent(std::vector<std::vector<double>> new_centroi
 int main(int argc, char** argv)
 {
     int32_t k = 0;
+    uint64_t iter = 0;
     /*Read from a CSV file */
-    std::string filename = "";
+    std::string input_filename = "";
+    std::string output_filename = "";
     std::vector<std::vector<double>> input;// = { {1.0, 1.0},{2.0, 1.0},{4.0, 3.0},{5.0, 4.0} };
-    if(argc > 2) {
-        filename = argv[1];
+    if(argc > 3) {
+        input_filename = argv[1];
         std::ifstream csv_file;
-        csv_file.open(filename);
+        csv_file.open(input_filename);
         input = Util::parseCSVfile(csv_file);	
         k = std::stoi(argv[2]);
+	output_filename = argv[3];
     }
     else {
         std::cerr<<"Please provide the correct path to the CSV file and the number of clusters "<<std::endl;
@@ -74,7 +77,7 @@ int main(int argc, char** argv)
 
     }
     
-
+    
 
     /* Compute distance of each datapoint with each of the cluster centroid and update it in the distance matrix*/
 
@@ -84,6 +87,8 @@ int main(int argc, char** argv)
         
         /*Computing new clusters */
         std::vector<uint64_t> cluster_sizes(k, 0);
+
+	iter++;
 
         for (uint32_t i = 0; i < k; i++) {
 
@@ -163,7 +168,7 @@ int main(int argc, char** argv)
 #if 0
     for (uint32_t i = 0; i < k; i++) {
 
-        for (int j = 0; j < number_of_features; j++) {
+        for (int j = 0; j < number _of_features; j++) {
 
             std::cout << new_centroid_centres[i][j] << " ";
 
@@ -193,16 +198,15 @@ int main(int argc, char** argv)
 #endif
 
 }
-  
-std::cout << " Printing data and their new centres" << std::endl;
 
-for (uint32_t j = 0; j < n; j++) {
-    dataset[j].display();
+std::cout << " Clustering completed " << std::endl;
+std::cout <<" Number of iterations : "<<iter<<std::endl;
+std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
 
-}
+Util::writeToCSVfile(dataset, output_filename);
+
+return 0;
     
-
-
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

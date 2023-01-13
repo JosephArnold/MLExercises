@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include "Data.cpp"
 
 class Util {
 
@@ -42,6 +43,40 @@ class Util {
         }
 
         return result;
+
+    }
+
+    static int32_t writeToCSVfile(std::vector<data<double>> dataset,  std::string output_filename) {
+	
+	std::ofstream outfile;
+        outfile.open (output_filename);
+
+        uint64_t n = dataset.size();
+
+	if(n == 0){
+	    std::cerr<<"No data to write "<<std::endl;
+	    return -1;
+	}
+
+	int32_t features_size = dataset[0].features.size();
+
+        for (uint64_t j = 0; j < n; j++) {
+            
+	    std::vector<double> features = dataset[j].features; 
+	    
+	    for(int32_t k = 0; k < features_size; k++) {
+	        
+	        outfile<<features[k]<<" , ";
+		
+	    }
+	    
+	    outfile << dataset[j].cluster_info << std::endl;
+
+        }
+        
+	outfile.close();
+	
+	return 0;
 
     }
 
