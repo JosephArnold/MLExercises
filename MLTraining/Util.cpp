@@ -11,14 +11,15 @@ class Util {
     template<typename T> static double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b) {
 
         double sum = 0.0;
-        uint64_t i = 0;
-
-        while (i < a.size()) {
+        uint32_t i = 0;
+        uint32_t n = a.size();
+        while (i < n) {
             sum += (a[i] - b[i]) * (a[i] - b[i]);
             i++;
         }
 
-        return sqrt(sum);
+	return sum
+        /* avoid sqrt(sum) for performance reasons */;
 
 
     }
@@ -46,7 +47,7 @@ class Util {
 
     }
 
-    static int32_t writeToCSVfile(std::vector<data<double>> dataset,  std::string output_filename) {
+    static int32_t writeToCSVfile(std::vector<data<double>>& dataset,  std::string output_filename) {
 	
 	std::ofstream outfile;
         outfile.open (output_filename);
