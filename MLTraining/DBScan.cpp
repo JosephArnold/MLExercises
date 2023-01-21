@@ -66,9 +66,9 @@ void computeDistances(std::vector<std::vector<float>>& distance_matrix,
 
 }
 
-void mergeNeighbours(std::map<uint32_t, std::set<uint32_t>>& core_points) {
+static inline void mergeNeighbours(std::map<uint32_t, std::set<uint32_t>>& core_points) {
 
-    for(auto core_point:core_points) {
+    for(auto& core_point:core_points) {
         
         auto& neighbours1 = core_point.second;
         
@@ -153,10 +153,13 @@ int main(int argc, char** argv)
 	}
 	    
     }
-	 /*This is just a memory optimization. So that the number of core points do not become too large.
-	  * This is possible for large dataunordered_sets with epsilon value becoming too small that the intermediate
-	  * clusters are too large */
-	    /*for each neighbour */
+
+    for(uint32_t i = 0; i < n; i++) {
+
+        if(core_points[i].size() < min_points)
+	    core_points.erase(i);
+
+    }
 	 
 #if 0
     for(auto a:core_points) {
@@ -170,56 +173,12 @@ int main(int argc, char** argv)
 
     }
 #endif
-//    mergeNeighbours(core_points);
 
-    /*Merge all core points */
-    uint32_t prev_num_core_points = 1;
-    uint32_t curr_num_core_points = 0;
-
-    std::cout << "Merging core points "<<std::endl;
-    /*continue till number of core points do not change */
-    while (curr_num_core_points != prev_num_core_points) {
-
-        prev_num_core_points = core_points.size();
-    
-	for (auto& core_point : core_points) {
-            
-	    /* get neighbours of 'curent point' */
-
-	    for(auto val:core_point.second) {
-
-	       if(val != core_point.first) {
-
-	           if(core_points.find(val) != core_points.end()) {
-
-	               /*merge the neighbours of core point 'val' */
-                       auto& val_neighbours = core_points[val];
-
-		           for(auto i:val_neighbours) {
-
-		               core_point.second.insert(i);
-
-		           }
-
-		   /*remove the core point 'val' as its neighbours have been merged already */
-		   core_points.erase(val);
-
-	           }
-
-	       }  
-           
-            }
-
-        }
-
-        curr_num_core_points = core_points.size();
-
-    }
+    mergeNeighbours(core_points);
 
     std::cout << "Assigning clusters " << std::endl;
     for(auto& points_in_cluster:core_points) {
 
-	    if(points_in_cluster.second.size() >= min_points) {
 	     num_of_clusters++;
 
 	     for(auto p:points_in_cluster.second) {
@@ -229,7 +188,6 @@ int main(int argc, char** argv)
                  point_info[p] = 2; /* boundary points */
                 
              }
-	    }
 
     }
 
