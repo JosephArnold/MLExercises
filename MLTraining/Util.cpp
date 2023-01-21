@@ -18,7 +18,7 @@ class Util {
             i++;
         }
 
-	return sum
+	return sqrt(sum);
         /* avoid sqrt(sum) for performance reasons */;
 
 
