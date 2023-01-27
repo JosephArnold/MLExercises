@@ -50,22 +50,6 @@ static inline bool containsCommonElement(std::set<uint32_t>& a,
 
 }
 
-void computeDistances(std::vector<std::vector<float>>& distance_matrix,
-                                 std::vector<data<double>>& dataunordered_set) {
-
-    uint64_t n = dataunordered_set.size();
-    for(uint64_t i = 0; i < n; i++) {
-	std::vector<double> curr_point = dataunordered_set[i].features;
-        for(uint64_t j = i + 1; j < n; j++) {
-
-	    distance_matrix[i][j] = Util::calculateEuclideanDist(dataunordered_set[j].features, curr_point);
-	    distance_matrix[j][i] = distance_matrix[i][j];
-
-	}
-    }
-
-}
-
 static inline void mergeNeighbours(std::map<uint32_t, std::set<uint32_t>>& core_points) {
 
     for(auto& core_point:core_points) {
