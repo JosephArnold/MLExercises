@@ -80,7 +80,6 @@ int main(int argc, char** argv)
 {
     uint32_t min_points = 0;
     uint32_t num_of_clusters = 0;
-    bool merge=false;
     double epsilon = 0.0;
     /*Read from a CSV file */
     std::string input_filename = "";
@@ -105,8 +104,7 @@ int main(int argc, char** argv)
 
     std::vector<data<double>> dataunordered_set;
 
-    int32_t number_of_features = input[0].size();
-    for (int i = 0; i < input.size(); i++) {
+    for (uint32_t i = 0; i < input.size(); i++) {
 
         dataunordered_set.push_back(data<double>(input[i]));
 
