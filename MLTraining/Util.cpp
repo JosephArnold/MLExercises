@@ -8,19 +8,17 @@
 class Util {
 
     public:
-    template<typename T> static double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b) {
+    template<typename T> static double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b,  uint32_t n) {
 
         double sum = 0.0;
-        uint32_t i = 0;
-        uint32_t n = a.size();
-        while (i < n) {
+        
+        for(uint32_t i = 0; i < n; i++) {
+
             sum += (a[i] - b[i]) * (a[i] - b[i]);
-            i++;
-        }
+       
+	}
 
-	return sum;
-        /* avoid sqrt(sum) for performance reasons */;
-
+	return sqrt(sum);
 
     }
 

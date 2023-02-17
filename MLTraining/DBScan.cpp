@@ -12,24 +12,25 @@
 #include "Data.cpp"
 
 #pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
-static inline void getNeighbours(uint32_t index,  std::vector<data<double>>& dataunordered_set, 
-		   std::set<uint32_t>& neighbours,  uint32_t epsilon, uint32_t n) {
+static inline std::set<uint32_t> getNeighbours(uint32_t index,  std::vector<data<double>>& dataunordered_set, 
+		                                           double epsilon, uint32_t n, uint32_t number_of_features) {
 
     std::vector<double> curr_point = dataunordered_set[index].features;
 
-    /*every point is its own neighbour */
-    neighbours.insert(index);
+    std::set<uint32_t> neighbours;
 
     #pragma omp parallel for reduction(merge:neighbours)
-    for (uint32_t i = index + 1; i < n; i++) {
+    for (uint32_t i = 0; i < n; i++) {
 
-        if( (Util::calculateEuclideanDist(dataunordered_set[i].features, curr_point) <= epsilon)) {
+        if( (Util::calculateEuclideanDist(dataunordered_set[i].features, curr_point, number_of_features) <= epsilon)) {
          
 	    neighbours.insert(i);
 
         }
 
     }
+
+    return neighbours;
 
 }
 
@@ -81,6 +82,7 @@ int main(int argc, char** argv)
     uint32_t min_points = 0;
     uint32_t num_of_clusters = 0;
     double epsilon = 0.0;
+    uint32_t number_of_features = 0;
     /*Read from a CSV file */
     std::string input_filename = "";
     std::string output_filename = "";
@@ -114,6 +116,13 @@ int main(int argc, char** argv)
 
     std::cout << "Size of the input dataset is " << n << std::endl;
 
+    if(n > 0) {
+     
+        number_of_features = input[0].size();
+
+    }
+
+
     std::map<uint32_t, std::set<uint32_t>> core_points;
     /*initialize all points as noise points */
     std::vector<int32_t> point_info(n, 0);
@@ -124,24 +133,18 @@ int main(int argc, char** argv)
     
     for (uint32_t i = 0; i < n; i++) {
         
-	getNeighbours(i, dataunordered_set, core_points[i],  epsilon, n);
+	std::set<uint32_t> neighbours = getNeighbours(i, dataunordered_set, epsilon, n, number_of_features);
 
 	point_info[i] = 1;
 
-	for(auto p:core_points[i]) {
-
-	    core_points[p].insert(i);
+	if(neighbours.size() >= min_points) {
+	    
+	    core_points[i] = neighbours;
 
 	}
 	    
     }
 
-    for(uint32_t i = 0; i < n; i++) {
-
-        if(core_points[i].size() < min_points)
-	    core_points.erase(i);
-
-    }
 	 
 #if 0
     for(auto a:core_points) {
