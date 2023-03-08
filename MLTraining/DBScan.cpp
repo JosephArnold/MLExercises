@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <unordered_set>
 #include <map>
 #include <cfloat>
 #include <fstream>
@@ -11,43 +12,74 @@
 #include "Util.cpp"
 #include "Data.cpp"
 
+#define BLOCK_SIZE 4
+#define FLOAT_DATA_TYPE float
 #pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
-static inline std::set<uint32_t> getNeighbours(uint32_t index,  std::vector<data<double>>& dataunordered_set, 
-		                                           double epsilon, uint32_t n, uint32_t number_of_features) {
+#if 0
+template<typename T>
+static inline std::vector<std::vector<uint32_t>> getBlockNeighbours(uint32_t index,  
+		                                                    std::vector<std::vector<T>>& dataunordered_set,
+                                                                    T epsilon, uint32_t n, 
+								    uint32_t number_of_features) {
 
-    std::vector<double> curr_point = dataunordered_set[index].features;
+    std::vector<std::vector<uint32_t>> neighbours(4);
 
-    std::set<uint32_t> neighbours;
+    //         std::vector<T> curr_point0 = dataunordered_set[i];
+//       std::vector<T> curr_point1 = dataunordered_set[i + 1];
+//       std::vector<T> curr_point2 = dataunordered_set[i + 2];
+//         std::vector<T> curr_point3 = dataunordered_set[i + 3];
 
-    #pragma omp parallel for reduction(merge:neighbours)
-    for (uint32_t i = 0; i < n; i++) {
 
-        if( (Util::calculateEuclideanDist(dataunordered_set[i].features, curr_point, number_of_features) <= epsilon)) {
-         
-	    neighbours.insert(i);
+//    #pragma omp parallel for reduction(merge:neighbours[i])
+    for (uint32_t i = index; i < 4; i = i + 4) {
 
+        for(uint32_t j = 0; j < n; j = j + 4) {
+
+	    for(uint32_t k = i; k < i + 4; k++) {
+
+	        for(uint32_t l = j; k < j + 4; l++) {
+
+	            if(Util::calculateEuclideanDist<T>(dataunordered_set[k], 
+					               dataunordered_set[l], number_of_features) <= epsilon)
+	                neighbours[k].push_back(l);
+
+	        }
+
+	    }
         }
 
     }
 
     return neighbours;
-
 }
+#endif
+//#pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+template<typename T>
+static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
+		                                  T epsilon, uint32_t n, uint32_t number_of_features) {
 
-static inline bool containsCommonElement(std::set<uint32_t>& a, 
-		                         std::set<uint32_t>& b) {
+    std::vector<T> curr_point = dataunordered_set[index];
 
-	for(auto element:a) {
+    std::vector<uint32_t> neighbours;
 
-	        if(b.find(element) != b.end()) {
-	         
-		    return true;
+    std::vector<T> distance_vector(n , 0.0);
 
-		}
-	    
-	}
+    #pragma omp parallel for 
+    for (uint32_t i = 0; i < n; i++) {
 
-	return false;
+        distance_vector[i] = Util::calculateEuclideanDist<T>(dataunordered_set[i], curr_point, number_of_features);
+
+    }
+
+    #pragma omp parallel for reduction(merge:neighbours)
+    for (uint32_t i = 0; i < n; i++) {
+
+        if(distance_vector[i] <= epsilon)
+	    neighbours.push_back(i);
+
+    }
+
+    return neighbours;
 
 }
 
@@ -81,19 +113,21 @@ int main(int argc, char** argv)
 {
     uint32_t min_points = 0;
     uint32_t num_of_clusters = 0;
-    double epsilon = 0.0;
+    FLOAT_DATA_TYPE epsilon = 0.0;
     uint32_t number_of_features = 0;
     /*Read from a CSV file */
     std::string input_filename = "";
     std::string output_filename = "";
-    std::vector<std::vector<double>> input;
-
+    std::vector<std::vector<FLOAT_DATA_TYPE>> input;
+    double start_time, end_time;
+  
+    start_time = omp_get_wtime();
     try {
     if(argc > 4) {
         input_filename = argv[1];
         std::ifstream csv_file;
         csv_file.open(input_filename);
-        input = Util::parseCSVfile(csv_file);	
+        input = Util::parseCSVfile<FLOAT_DATA_TYPE>(csv_file);	
         min_points = std::stoi(argv[2]);
 	epsilon = std::stod(argv[3]);
 	output_filename = argv[4];
@@ -104,18 +138,15 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    std::vector<data<double>> dataunordered_set;
+    uint32_t n = static_cast<int32_t>(input.size());
 
-    for (uint32_t i = 0; i < input.size(); i++) {
-
-        dataunordered_set.push_back(data<double>(input[i]));
-
-    }
-
-    uint32_t n = static_cast<int32_t>(dataunordered_set.size());
+    FLOAT_DATA_TYPE epsilon_square = epsilon * epsilon;
 
     std::cout << "Size of the input dataset is " << n << std::endl;
 
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to load dataset " << (end_time - start_time) <<"s"<< std::endl;
     if(n > 0) {
      
         number_of_features = input[0].size();
@@ -125,29 +156,66 @@ int main(int argc, char** argv)
 
     std::map<uint32_t, std::set<uint32_t>> core_points;
     /*initialize all points as noise points */
-    std::vector<int32_t> point_info(n, 0);
+    std::vector<uint32_t> cluster_info(n, 0);
 
+    std::vector<uint32_t> neighbour_count(n, 0);
     /* For each point determine the number of neighbourhood points*/
     
     std::cout << "Evaluating core points "<<std::endl;     
-    
-    for (uint32_t i = 0; i < n; i++) {
-        
-	std::set<uint32_t> neighbours = getNeighbours(i, dataunordered_set, epsilon, n, number_of_features);
+   
+    start_time = omp_get_wtime(); 
 
-	point_info[i] = 1;
+    for (uint32_t i = 0; i < n; i = i + BLOCK_SIZE) {
 
-	if(neighbours.size() >= min_points) {
-	    
-	    core_points[i] = neighbours;
+	/*compute neighbours for BLOCK_SIZE points */
+        std::vector<std::vector<FLOAT_DATA_TYPE>> neighbours(BLOCK_SIZE, std::vector<FLOAT_DATA_TYPE>(n, FLT_MAX));
+
+	#pragma omp parallel for
+	for(uint32_t j = 0; j < n; j = j + BLOCK_SIZE) {
+
+            for(uint32_t k = 0; (k < BLOCK_SIZE) & ((k + i) < n); k++) {
+
+                for(uint32_t l = 0; (l < BLOCK_SIZE) & ((l + j) < n); l++) {
+
+                    neighbours[k][l + j] = Util::calculateEuclideanDist<FLOAT_DATA_TYPE>(input[k + i],
+                                                                                         input[l + j], 
+									                  number_of_features);
+
+
+                }
+
+            }
+        }
+
+	for(uint32_t k = 0; k < BLOCK_SIZE; k++) {
+
+	    std::set<uint32_t> points;
+
+	    #pragma omp parallel for reduction(merge:points)
+	    for(uint32_t l = 0; l < n; l++) {
+
+	       if(neighbours[k][l] <= epsilon_square) {
+
+	            points.insert(l);
+
+	       }
+
+	    }
+
+	    if(points.size() >= min_points)
+	        core_points[k + i] = points;
+
 
 	}
-	    
+
+	if((i % 10000) == 0)
+            mergeNeighbours(core_points);
+
+
     }
 
-	 
 #if 0
-    for(auto a:core_points) {
+     for(auto a:core_points) {
 
        std::cout<<a.first<<" - ";
        for(auto b:a.second) {
@@ -159,29 +227,51 @@ int main(int argc, char** argv)
     }
 #endif
 
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
+
+    start_time = omp_get_wtime();
+
     mergeNeighbours(core_points);
 
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to merge clusters " << (end_time - start_time) <<"s"<< std::endl;
+
     std::cout << "Assigning clusters " << std::endl;
+
+    start_time = omp_get_wtime();
+    
     for(auto& points_in_cluster:core_points) {
 
 	     num_of_clusters++;
 
 	     for(auto p:points_in_cluster.second) {
 
-                 dataunordered_set[p].setClusterInfo(num_of_clusters); 
+                 cluster_info[p] = num_of_clusters; 
 
-                 point_info[p] = 2; /* boundary points */
-                
              }
 
     }
+
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to assign clusters " << (end_time - start_time) <<"s"<< std::endl;
 
     std::cout << " Clustering completed " << std::endl;
     std::cout <<" Number of clusters : "<<num_of_clusters<<std::endl;
     std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
     std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
 
-    Util::writeToCSVfile(dataunordered_set, output_filename);
+    start_time = omp_get_wtime();
+    
+    Util::writeToCSVfile<FLOAT_DATA_TYPE>(input, cluster_info, output_filename);
+
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to write output to file " << (end_time - start_time) <<"s"<< std::endl;
+
     
     }
     catch (const std::exception& e) {

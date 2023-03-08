@@ -11,14 +11,15 @@ class Util {
     template<typename T> static double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b,  uint32_t n) {
 
         double sum = 0.0;
-        
+
+	#pragma omp simd reduction(+:sum)
         for(uint32_t i = 0; i < n; i++) {
 
             sum += (a[i] - b[i]) * (a[i] - b[i]);
        
 	}
 
-	return sqrt(sum);
+	return sum;
 
     }
 
@@ -94,8 +95,84 @@ class Util {
             std::cout<<std::endl;
         }
 
-     }
-}
+        }
+    }
+
+    static inline double sigmoid(double x) {
+
+        return 1.0 / (1.0 + exp(-x));
+
+    }
+
+    static inline std::vector<double> multiplyVectorwithMatrix(std::vector<double> vectorArray,
+		                                                            std::vector<std::vector<double>> matrix,
+									    uint32_t n,
+									    uint32_t k
+									    ) {
+
+        std::vector<double> result(k, 0.0); 
+        
+	for(uint32_t i = 0; i < k; i++) {
+
+	    for(uint32_t j = 0; j < n; j++) {
+
+	        result[i] += vectorArray[j] * matrix[j][k];
+
+	    }
+
+	}
+
+	return result;
+
+    }
+
+    static inline double dotProduct(std::vector<double> vectorArray1,
+		                    std::vector<double> vectorArray2
+                                    uint32_t n) {
+
+        double result;
+
+        for(uint32_t i = 0; i < n; i++) {
+
+            result += vectorArray1[i] * vectorArray2[i];
+
+        }
+
+        return result;
+
+    }
+
+    std::vector<std::vector<double>> transpose(std::vector<std::vector<double>> matrix
+		       		               uint32_t rows, uint32_t cols) {
+
+	 std::vector<std::vector<double>> result(cols, std::vector<double>(rows, 0.0));
+
+         for(uint32_t i = 0; i < cols; i++) {
+
+	     for(uint32_t j = i + 1; j < rows; j++) {
+
+                 result[i][j] = matrix[j][i];
+
+        }
+
+    }
+
+    std::vector<double> addVectors(std::vector<double> vector1, 
+		                   std::vector<double> vector2, uint32_t n) {
+
+         std::vector<double> result;
+
+         for(uint32_t i = 0; i < n; i++) {
+
+             result.push_back(vector1[i] + vector2[i]);
+
+        }
+
+	return result;
+
+    }
+
+
 
 //template double calculateEuclideanDist(std::vector<double>, std::vector<double>);
 };
