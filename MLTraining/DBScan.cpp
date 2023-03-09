@@ -2,7 +2,7 @@
 //
 
 #define BLOCK_SIZE 4
-#define DATA_TYPE double
+#define DATA_TYPE float
 
 #include <iostream>
 #include <vector>
@@ -16,44 +16,7 @@
 #include "Data.cpp"
 
 #pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
-#if 0
-template<typename T>
-static inline std::vector<std::vector<uint32_t>> getBlockNeighbours(uint32_t index,  
-		                                                    std::vector<std::vector<T>>& dataunordered_set,
-                                                                    T epsilon, uint32_t n, 
-								    uint32_t number_of_features) {
 
-    std::vector<std::vector<uint32_t>> neighbours(4);
-
-    //         std::vector<T> curr_point0 = dataunordered_set[i];
-//       std::vector<T> curr_point1 = dataunordered_set[i + 1];
-//       std::vector<T> curr_point2 = dataunordered_set[i + 2];
-//         std::vector<T> curr_point3 = dataunordered_set[i + 3];
-
-
-//    #pragma omp parallel for reduction(merge:neighbours[i])
-    for (uint32_t i = index; i < 4; i = i + 4) {
-
-        for(uint32_t j = 0; j < n; j = j + 4) {
-
-	    for(uint32_t k = i; k < i + 4; k++) {
-
-	        for(uint32_t l = j; k < j + 4; l++) {
-
-	            if(Util::calculateEuclideanDist<T>(dataunordered_set[k], 
-					               dataunordered_set[l], number_of_features) <= epsilon)
-	                neighbours[k].push_back(l);
-
-	        }
-
-	    }
-        }
-
-    }
-
-    return neighbours;
-}
-#endif
 //#pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
 static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
@@ -128,7 +91,7 @@ int main(int argc, char** argv)
         input_filename = argv[1];
         std::ifstream csv_file;
         csv_file.open(input_filename);
-        input = Util::parseCSVfile(csv_file);	
+        input = Util::parseCSVfile<DATA_TYPE>(csv_file);	
         min_points = std::stoi(argv[2]);
 	epsilon = std::stod(argv[3]);
 	output_filename = argv[4];
@@ -178,9 +141,8 @@ int main(int argc, char** argv)
 
                 for(uint32_t l = 0; (l < BLOCK_SIZE) & ((l + j) < n); l++) {
 
-                    neighbours[k][l + j] = Util::calculateEuclideanDist(input[k + i],
-                                                                                         input[l + j], 
-									                  number_of_features);
+                    neighbours[k][l + j] = Util::calculateEuclideanDist(input[k + i], input[l + j], 
+									number_of_features);
 
 
                 }

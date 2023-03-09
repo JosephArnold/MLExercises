@@ -23,15 +23,16 @@ class Util {
 
     }
 
-    static std::vector<std::vector<double>> parseCSVfile(std::ifstream& str) {
-        std::vector<std::vector<double>>   result;
+    template<typename T>
+    static std::vector<std::vector<T>> parseCSVfile(std::ifstream& str) {
+        std::vector<std::vector<T>>   result;
         std::string                line;
         std::string                cell, row;
 
         while(std::getline(str,row)) {
 
             std::stringstream rowstream(row);
-            std::vector<double> row_values;
+            std::vector<T> row_values;
 
             while(std::getline(rowstream,cell, ',')) {
 
@@ -46,25 +47,26 @@ class Util {
 
     }
 
-    static int32_t writeToCSVfile(std::vector<data<double>>& dataset,  std::string output_filename) {
+    template<typename T>
+    static int32_t writeToCSVfile(std::vector<data<T>>& dataset,  std::string output_filename) {
 	
 	std::ofstream outfile;
         outfile.open (output_filename);
 
-        uint64_t n = dataset.size();
+        uint32_t n = dataset.size();
 
 	if(n == 0){
 	    std::cerr<<"No data to write "<<std::endl;
 	    return -1;
 	}
 
-	int32_t features_size = dataset[0].features.size();
+	uint32_t features_size = dataset[0].features.size();
 
-        for (uint64_t j = 0; j < n; j++) {
+        for (uint32_t j = 0; j < n; j++) {
             
-	    std::vector<double> features = dataset[j].features; 
+	    std::vector<T> features = dataset[j].features; 
 	    
-	    for(int32_t k = 0; k < features_size; k++) {
+	    for(uint32_t k = 0; k < features_size; k++) {
 	        
 	        outfile<<features[k]<<" , ";
 		
