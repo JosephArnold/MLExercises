@@ -80,6 +80,42 @@ class Util {
 
     }
 
+    template<typename T> static int32_t writeToCSVfile(std::vector<std::vector<T>>& dataset,
+                                  std::vector<uint32_t> cluster_info,
+                                  std::string output_filename) {
+
+        std::ofstream outfile;
+        outfile.open (output_filename);
+
+        uint64_t n = dataset.size();
+
+        if(n == 0){
+            std::cerr<<"No data to write "<<std::endl;
+            return -1;
+        }
+
+        int32_t features_size = dataset[0].size();
+
+        for (uint64_t j = 0; j < n; j++) {
+
+            std::vector<T> features = dataset[j];
+
+            for(int32_t k = 0; k < features_size; k++) {
+
+                outfile<<features[k]<<" , ";
+
+            }
+
+            outfile << cluster_info[j] << std::endl;
+
+        }
+
+        outfile.close();
+
+        return 0;
+
+    }
+
     static void displayInputMatrix(std::vector<std::vector<double>>& in) {
 
         int64_t numRows = in.size();
@@ -127,7 +163,7 @@ class Util {
     }
 
     static inline double dotProduct(std::vector<double> vectorArray1,
-		                    std::vector<double> vectorArray2
+		                    std::vector<double> vectorArray2,
                                     uint32_t n) {
 
         double result;
@@ -142,7 +178,7 @@ class Util {
 
     }
 
-    std::vector<std::vector<double>> transpose(std::vector<std::vector<double>> matrix
+    std::vector<std::vector<double>> transpose(std::vector<std::vector<double>> matrix,
 		       		               uint32_t rows, uint32_t cols) {
 
 	 std::vector<std::vector<double>> result(cols, std::vector<double>(rows, 0.0));
@@ -153,7 +189,11 @@ class Util {
 
                  result[i][j] = matrix[j][i];
 
-        }
+             }
+
+         }
+
+	 return result;
 
     }
 

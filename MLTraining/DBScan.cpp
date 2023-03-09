@@ -1,6 +1,9 @@
 // MLTraining.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
+#define BLOCK_SIZE 4
+#define DATA_TYPE double
+
 #include <iostream>
 #include <vector>
 #include <set>
@@ -12,8 +15,6 @@
 #include "Util.cpp"
 #include "Data.cpp"
 
-#define BLOCK_SIZE 4
-#define FLOAT_DATA_TYPE float
 #pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #if 0
 template<typename T>
@@ -113,12 +114,12 @@ int main(int argc, char** argv)
 {
     uint32_t min_points = 0;
     uint32_t num_of_clusters = 0;
-    FLOAT_DATA_TYPE epsilon = 0.0;
+    DATA_TYPE epsilon = 0.0;
     uint32_t number_of_features = 0;
     /*Read from a CSV file */
     std::string input_filename = "";
     std::string output_filename = "";
-    std::vector<std::vector<FLOAT_DATA_TYPE>> input;
+    std::vector<std::vector<DATA_TYPE>> input;
     double start_time, end_time;
   
     start_time = omp_get_wtime();
@@ -127,7 +128,7 @@ int main(int argc, char** argv)
         input_filename = argv[1];
         std::ifstream csv_file;
         csv_file.open(input_filename);
-        input = Util::parseCSVfile<FLOAT_DATA_TYPE>(csv_file);	
+        input = Util::parseCSVfile(csv_file);	
         min_points = std::stoi(argv[2]);
 	epsilon = std::stod(argv[3]);
 	output_filename = argv[4];
@@ -140,7 +141,7 @@ int main(int argc, char** argv)
 
     uint32_t n = static_cast<int32_t>(input.size());
 
-    FLOAT_DATA_TYPE epsilon_square = epsilon * epsilon;
+    DATA_TYPE epsilon_square = epsilon * epsilon;
 
     std::cout << "Size of the input dataset is " << n << std::endl;
 
@@ -168,7 +169,7 @@ int main(int argc, char** argv)
     for (uint32_t i = 0; i < n; i = i + BLOCK_SIZE) {
 
 	/*compute neighbours for BLOCK_SIZE points */
-        std::vector<std::vector<FLOAT_DATA_TYPE>> neighbours(BLOCK_SIZE, std::vector<FLOAT_DATA_TYPE>(n, FLT_MAX));
+        std::vector<std::vector<DATA_TYPE>> neighbours(BLOCK_SIZE, std::vector<DATA_TYPE>(n, FLT_MAX));
 
 	#pragma omp parallel for
 	for(uint32_t j = 0; j < n; j = j + BLOCK_SIZE) {
@@ -177,7 +178,7 @@ int main(int argc, char** argv)
 
                 for(uint32_t l = 0; (l < BLOCK_SIZE) & ((l + j) < n); l++) {
 
-                    neighbours[k][l + j] = Util::calculateEuclideanDist<FLOAT_DATA_TYPE>(input[k + i],
+                    neighbours[k][l + j] = Util::calculateEuclideanDist(input[k + i],
                                                                                          input[l + j], 
 									                  number_of_features);
 
@@ -266,7 +267,7 @@ int main(int argc, char** argv)
 
     start_time = omp_get_wtime();
     
-    Util::writeToCSVfile<FLOAT_DATA_TYPE>(input, cluster_info, output_filename);
+    Util::writeToCSVfile(input, cluster_info, output_filename);
 
     end_time = omp_get_wtime();
 
