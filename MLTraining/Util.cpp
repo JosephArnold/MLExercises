@@ -5,12 +5,18 @@
 #include <cmath>
 #include "Data.cpp"
 
+typedef union {
+	float val;
+	uint32_t hex;
+
+} floatword;
+
 class Util {
 
     public:
-    template<typename T> static double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b,  uint32_t n) {
+    template<typename T> static inline double calculateEuclideanDist(std::vector<T>& a, std::vector<T>& b,  uint32_t n) {
 
-        double sum = 0.0;
+        T sum = 0.0;
 
 	#pragma omp simd reduction(+:sum)
         for(uint32_t i = 0; i < n; i++) {
@@ -215,6 +221,13 @@ class Util {
     }
 
 
+    static inline uint32_t asuint32(float x) {
+
+        floatword num;
+	num.val = x;
+	return num.hex;
+
+    }
 
 //template double calculateEuclideanDist(std::vector<double>, std::vector<double>);
 };
