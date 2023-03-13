@@ -205,8 +205,9 @@ class Util {
 
     }
 
-    std::vector<double> addVectors(std::vector<double> vector1, 
-		                   std::vector<double> vector2, uint32_t n) {
+    template<typename T> std::vector<double> addVectors(std::vector<double> vector1, 
+		                                        std::vector<double> vector2, 
+							uint32_t n) {
 
          std::vector<double> result;
 
@@ -220,6 +221,36 @@ class Util {
 
     }
 
+    template<typename T> std::vector<T> subtractVectors(std::vector<T> vector1,
+                                                        std::vector<T> vector2, 
+							uint32_t n) {
+
+         std::vector<T> result;
+
+         for(uint32_t i = 0; i < n; i++) {
+
+             result.push_back(vector1[i] - vector2[i]);
+
+        }
+
+        return result;
+
+    }
+
+
+    template<typename T> std::vector<T> scaleVector(T alpha, 
+		                                    std::vector<T> vector1, uint32_t n) {
+
+
+         for(uint32_t i = 0; i < n; i++) {
+
+             vector1[i] = alpha * vector1[i];
+
+        }
+
+        return vector1;
+
+    }
 
     static inline uint32_t asuint32(float x) {
 
