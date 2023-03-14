@@ -205,11 +205,11 @@ class Util {
 
     }
 
-    template<typename T> std::vector<double> addVectors(std::vector<double> vector1, 
-		                                        std::vector<double> vector2, 
-							uint32_t n) {
+    template<typename T> static inline std::vector<T> addVectors(std::vector<T> vector1, 
+		                                                 std::vector<T> vector2, 
+							         uint32_t n) {
 
-         std::vector<double> result;
+         std::vector<T> result;
 
          for(uint32_t i = 0; i < n; i++) {
 
@@ -221,7 +221,21 @@ class Util {
 
     }
 
-    template<typename T> std::vector<T> subtractVectors(std::vector<T> vector1,
+    template<typename T> static inline void displayVector(std::vector<T> vector1,
+                                                          uint32_t n) {
+
+         for(uint32_t i = 0; i < n; i++) {
+
+	     std::cout<<vector1[i]<<" ";
+
+         }
+	 
+	 std::cout<<std::endl;
+
+    }
+
+
+    template<typename T> static inline std::vector<T> subtractVectors(std::vector<T> vector1,
                                                         std::vector<T> vector2, 
 							uint32_t n) {
 
@@ -238,11 +252,11 @@ class Util {
     }
 
 
-    template<typename T> std::vector<T> scaleVector(T alpha, 
-		                                    std::vector<T> vector1, uint32_t n) {
+    template<typename T> static inline std::vector<T> scaleVector(T alpha, 
+		                                                  std::vector<T> vector1, 
+								  uint32_t n) {
 
-
-         for(uint32_t i = 0; i < n; i++) {
+        for(uint32_t i = 0; i < n; i++) {
 
              vector1[i] = alpha * vector1[i];
 
