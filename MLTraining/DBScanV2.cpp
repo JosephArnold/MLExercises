@@ -23,7 +23,7 @@
 template<typename T>
 static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
 		                                  uint32_t epsilon, uint32_t n, uint32_t number_of_features, 
-						  std::vector<uint32_t>& visited) {
+						  std::vector<bool>& visited) {
 
     std::vector<uint32_t> neighbours;
 
@@ -32,43 +32,20 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
     #pragma omp parallel for reduction(merge:neighbours)
     for (uint32_t i = 0; i < n; i++) {
 
-        if(!visited[i]) {
-            if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[i], curr_point, number_of_features))
-	        <= epsilon)
+        if(!visited[i] && ( 
+	    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[i], curr_point, number_of_features))
+	        <= epsilon)) {
 	        neighbours.push_back(i);
+	        visited[i] = true;
 
-        }
+	}
+
 
     }
 
     return neighbours;
 
 }
-
-static inline void mergeNeighbours(std::map<uint32_t, std::set<uint32_t>>& core_points) {
-
-    for(auto& core_point:core_points) {
-        
-        auto& neighbours1 = core_point.second;
-        
-        for(auto pt:neighbours1) {
-
-	    if((pt != core_point.first) && (core_points.find(pt) != core_points.end())) {
-		
-		/*merge */
-	        auto& neighbours2 = core_points[pt];
-
-		neighbours1.insert(neighbours2.begin(), neighbours2.end());
-
-		core_points.erase(pt);
-
-	    }
-
-	}	
-
-    }
-}
-
 
 #pragma omp declare reduction (unordered_map_add : std::map<uint32_t,  std::set<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
 int main(int argc, char** argv)
@@ -118,7 +95,7 @@ int main(int argc, char** argv)
 
     std::unordered_map<uint32_t, std::vector<uint32_t>> core_points;
     /*initialize all points as noise points */
-    std::vector<uint32_t> visited(n, 0);
+    std::vector<bool> visited(n, false);
 
     std::vector<uint32_t> cluster_info(n, 0);
     /* For each point determine the number of neighbourhood points*/
@@ -135,40 +112,44 @@ int main(int argc, char** argv)
 
 	if(!visited[i]) { 
         
-	    std::queue<uint32_t> compute;
+	    //std::queue<uint32_t> compute;
 
+	    std::vector<uint32_t> compute;
             std::vector<uint32_t> cluster;
 
-	    compute.push(i);
+	    //compute.push(i);
+	    compute.push_back(i);
 
 	    cluster.push_back(i);
 
-	    visited[i] = 1;
+	    visited[i] = true;
 
 	    while(!compute.empty()) {
-		    
-	        uint32_t index = compute.front();
+		   
+		std::vector<uint32_t> neighbours;
 
-		compute.pop();
+		uint32_t index = compute[0];
 
-		std::vector<uint32_t> neighbours = getNeighbours(index, input, epsilon_hex, 
-				                                 n, number_of_features, visited);
+		compute.erase(compute.begin());
 
-		for(auto pt:neighbours) {
+		neighbours = getNeighbours(index, input, epsilon_hex, 
+				           n, number_of_features, visited);
 
-		    compute.push(pt);
+		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
+		compute.insert(compute.end(), neighbours.begin(), neighbours.end());
 
-		    cluster.push_back(pt);
-
-		    visited[pt] = 1;
-
-		}
+		cluster.insert(cluster.end(), neighbours.begin(), neighbours.end());
 
 	    }
 
 	    if(cluster.size() >= min_points) {
 	        core_points[++num_clusters] = cluster;
 		std::cout<<"cluster "<<num_clusters<<" has "<<cluster.size()<<" points"<<std::endl;
+
+		 end_time = omp_get_wtime();
+
+                 std::cout << "Time to evaluate cluster " << (end_time - start_time) <<"s"<< std::endl;
+
 	    }
 
 	}
