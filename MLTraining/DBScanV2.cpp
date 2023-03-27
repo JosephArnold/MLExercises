@@ -143,12 +143,10 @@ int main(int argc, char** argv)
 	    }
 
 	    if(cluster.size() >= min_points) {
-	        core_points[++num_clusters] = cluster;
+	        
+		core_points[++num_clusters] = cluster;
+		
 		std::cout<<"cluster "<<num_clusters<<" has "<<cluster.size()<<" points"<<std::endl;
-
-		 end_time = omp_get_wtime();
-
-                 std::cout << "Time to evaluate cluster " << (end_time - start_time) <<"s"<< std::endl;
 
 	    }
 
@@ -173,15 +171,6 @@ int main(int argc, char** argv)
 
     std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
 
-#if 0
-    start_time = omp_get_wtime();
-
-    mergeNeighbours(core_points);
-
-    end_time = omp_get_wtime();
-
-    std::cout << "Time to merge clusters " << (end_time - start_time) <<"s"<< std::endl;
-#endif
     std::cout << "Assigning clusters " << std::endl;
 
     start_time = omp_get_wtime();
