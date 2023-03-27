@@ -216,6 +216,8 @@ int main(int argc, char** argv)
 
              }
 
+	     std::cout << "Number of points in cluster " <<num_of_clusters<<" is "<<points_in_cluster.second.size()<<std::endl;
+
     }
 
     end_time = omp_get_wtime();
