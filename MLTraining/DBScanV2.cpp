@@ -40,7 +40,6 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
 
 	}
 
-
     }
 
     return neighbours;
@@ -61,6 +60,7 @@ int main(int argc, char** argv)
     double start_time, end_time;
   
     start_time = omp_get_wtime();
+    
     try {
     if(argc > 4) {
         input_filename = argv[1];
@@ -92,7 +92,6 @@ int main(int argc, char** argv)
 
     }
 
-
     std::unordered_map<uint32_t, std::vector<uint32_t>> core_points;
     /*initialize all points as noise points */
     std::vector<bool> visited(n, false);
@@ -112,8 +111,6 @@ int main(int argc, char** argv)
 
 	if(!visited[i]) { 
         
-	    //std::queue<uint32_t> compute;
-
 	    std::vector<uint32_t> compute;
             std::vector<uint32_t> cluster;
 
