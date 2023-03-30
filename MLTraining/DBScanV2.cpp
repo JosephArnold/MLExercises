@@ -6,7 +6,9 @@
 
 #include <iostream>
 #include <vector>
+#include <numeric>
 #include <set>
+#include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
 #include <map>
@@ -16,6 +18,7 @@
 #include <omp.h>
 #include "Util.cpp"
 #include "Data.cpp"
+#include <climits>
 
 //#pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
@@ -23,9 +26,22 @@
 template<typename T>
 static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
 		                                  uint32_t epsilon, uint32_t n, uint32_t number_of_features, 
-						  std::vector<bool>& visited) {
+						  std::vector<bool>& visited,
+						  std::unordered_map<uint32_t, std::vector<DATA_TYPE>>& nearest_neighbours) {
 
     std::vector<uint32_t> neighbours;
+    
+    /*Get all neighbours of that point */
+
+    #pragma omp parallel for reduction(merge:neighbours)
+    for(auto& pt : nearest_neighbours[index]) {
+
+        if(!visited[pt]) {
+            neighbours.push_back(pt);
+            visited[pt] = true;
+        }
+
+    }
 
     std::vector<T> curr_point = dataunordered_set[index];
 
@@ -47,13 +63,12 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
 }
 
 #pragma omp declare reduction (unordered_map_add : std::map<uint32_t,  std::set<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
-int main(int argc, char** argv)
-{
+
+int main(int argc, char** argv) {
+    
     uint32_t min_points = 0;
-    //uint32_t num_of_clusters = 0;
     DATA_TYPE epsilon = 0.0;
     uint32_t number_of_features = 0;
-    /*Read from a CSV file */
     std::string input_filename = "";
     std::string output_filename = "";
     std::vector<std::vector<DATA_TYPE>> input;
@@ -78,6 +93,7 @@ int main(int argc, char** argv)
     }
 
     uint32_t n = static_cast<int32_t>(input.size());
+    uint32_t total_cells = 1;
 
     DATA_TYPE epsilon_square = epsilon * epsilon;
 
@@ -89,6 +105,86 @@ int main(int argc, char** argv)
     if(n > 0) {
      
         number_of_features = input[0].size();
+
+    }
+
+    std::vector<DATA_TYPE> mins(number_of_features, FLT_MAX);
+    std::vector<DATA_TYPE> maxs(number_of_features, 0.0);
+    std::vector<DATA_TYPE> dimensions(number_of_features, 0.0);
+
+    std::unordered_map<uint32_t, std::vector<DATA_TYPE>> spatial_index;
+
+    for(uint32_t i = 0; i < n; i++) {
+
+        for(uint32_t j = 0; j < number_of_features; j++) {
+
+	    if(input[i][j] < mins[j])
+	        mins[j] = input[i][j];
+
+	    if(input[i][j] > maxs[j])
+	        maxs[j] = input[i][j];
+
+	}
+
+    }
+
+    for(uint32_t j = 0; j < number_of_features; j++) {
+
+	dimensions[j] = std::ceil((maxs[j] - mins[j]) / (2.0 * epsilon)) + 1;
+	total_cells *= dimensions[j];
+
+    }
+
+    std::cout<<"Total cells  "<<total_cells<< std::endl;
+
+    std::vector<DATA_TYPE> m_swapped_dimensions(number_of_features, 0.0);
+    /*SWAP dimensions */
+    std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
+    
+    // swap the dimensions descending by their cell sizes
+     std::sort(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), [&] (size_t a, size_t b) {
+            return dimensions[a] < dimensions[b];
+        });
+
+     for(uint32_t i = 0; i < n; i++) {
+
+	uint32_t key = 0;
+	uint32_t accumulator = 1;
+
+        for(uint32_t j = 0; j < number_of_features; j++) {
+
+            size_t index = static_cast<size_t>(std::floor((input[i][j] - mins[j]) / (2.0 * epsilon)));
+            key += index * accumulator;
+            accumulator *= dimensions[j];
+            
+        }	    
+	
+	spatial_index[key].push_back(i);
+
+    }
+
+    std::unordered_map<uint32_t, std::vector<DATA_TYPE>> nearest_neighbours;
+ 
+    /*Find points within epsilon distance within a cell */
+    for(auto index:spatial_index) {
+
+        auto vals = index.second;
+
+        for(uint32_t i = 0; i < vals.size(); i++) {
+
+	    for(uint32_t k = i + 1; k < vals.size(); k++) {
+
+                if(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
+					                   input[vals[k]], number_of_features) 
+		                                            <= epsilon_square) {
+                   
+		    nearest_neighbours[vals[i]].push_back(vals[k]);
+		    nearest_neighbours[vals[k]].push_back(vals[i]);
+		}
+	    
+	    }
+	    
+	}
 
     }
 
@@ -114,7 +210,6 @@ int main(int argc, char** argv)
 	    std::vector<uint32_t> compute;
             std::vector<uint32_t> cluster;
 
-	    //compute.push(i);
 	    compute.push_back(i);
 
 	    cluster.push_back(i);
@@ -130,7 +225,7 @@ int main(int argc, char** argv)
 		compute.erase(compute.begin());
 
 		neighbours = getNeighbours(index, input, epsilon_hex, 
-				           n, number_of_features, visited);
+				            n, number_of_features, visited, nearest_neighbours);
 
 		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
 		compute.insert(compute.end(), neighbours.begin(), neighbours.end());
