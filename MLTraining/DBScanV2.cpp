@@ -27,11 +27,11 @@ template<typename T>
 static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
 		                                  uint32_t epsilon, uint32_t n, uint32_t number_of_features, 
 						  std::vector<bool>& visited,
-						  std::unordered_map<uint32_t, std::vector<DATA_TYPE>>& nearest_neighbours) {
+						  std::unordered_map<uint32_t, std::vector<uint32_t>>& nearest_neighbours) {
 
     std::vector<uint32_t> neighbours;
     
-    /*Get all neighbours of that point */
+    /*Get all neighbours of that point so that you dont have to compute neighbours to that point again */
 
     #pragma omp parallel for reduction(merge:neighbours)
     for(auto& pt : nearest_neighbours[index]) {
@@ -42,6 +42,9 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
         }
 
     }
+
+    /*we no longer need to store the neighbours */
+    nearest_neighbours.erase(index);
 
     std::vector<T> curr_point = dataunordered_set[index];
 
@@ -163,7 +166,9 @@ int main(int argc, char** argv) {
 
     }
 
-    std::unordered_map<uint32_t, std::vector<DATA_TYPE>> nearest_neighbours;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> nearest_neighbours;
+
+    uint32_t epsilon_hex = Util::asuint32(epsilon_square);
  
     /*Find points within epsilon distance within a cell */
     for(auto index:spatial_index) {
@@ -172,18 +177,20 @@ int main(int argc, char** argv) {
 
         for(uint32_t i = 0; i < vals.size(); i++) {
 
+	    std::vector<uint32_t>& neighbours =  nearest_neighbours[vals[i]];
+	    #pragma omp parallel for reduction(merge:neighbours)
 	    for(uint32_t k = i + 1; k < vals.size(); k++) {
 
-                if(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
-					                   input[vals[k]], number_of_features) 
-		                                            <= epsilon_square) {
+                if( Util::asuint32(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
+					                   input[vals[k]], number_of_features)) 
+		                                            <= epsilon_hex) {
                    
-		    nearest_neighbours[vals[i]].push_back(vals[k]);
+		    neighbours.push_back(vals[k]);
+		    #pragma omp critical
 		    nearest_neighbours[vals[k]].push_back(vals[i]);
 		}
 	    
 	    }
-	    
 	}
 
     }
@@ -200,8 +207,6 @@ int main(int argc, char** argv) {
     start_time = omp_get_wtime(); 
 
     uint32_t num_clusters = 0;
-
-    uint32_t epsilon_hex = Util::asuint32(epsilon_square);
 
     for (uint32_t i = 0; i < n; i++) {
 
