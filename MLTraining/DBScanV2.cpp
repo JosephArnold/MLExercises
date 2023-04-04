@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     std::vector<DATA_TYPE> maxs(number_of_features, 0.0);
     std::vector<DATA_TYPE> dimensions(number_of_features, 0.0);
 
-    std::unordered_map<uint32_t, std::vector<DATA_TYPE>> spatial_index;
+    std::map<uint32_t, std::vector<DATA_TYPE>> spatial_index;
 
     for(uint32_t i = 0; i < n; i++) {
 
@@ -145,9 +145,9 @@ int main(int argc, char** argv) {
     std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
     
     // swap the dimensions descending by their cell sizes
-     std::sort(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), [&] (size_t a, size_t b) {
+    std::sort(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), [&] (size_t a, size_t b) {
             return dimensions[a] < dimensions[b];
-        });
+    });
 
      for(uint32_t i = 0; i < n; i++) {
 
@@ -169,11 +169,32 @@ int main(int argc, char** argv) {
     std::unordered_map<uint32_t, std::vector<uint32_t>> nearest_neighbours;
 
     uint32_t epsilon_hex = Util::asuint32(epsilon_square);
- 
+    
+    /* Reorder the cells */
+    std::vector<std::vector<DATA_TYPE>> reordered_input;
+    uint32_t reordered_indices = 0;
+     std::unordered_map<uint32_t, uint32_t> map_to_original_index;
+
+    for(auto index:spatial_index) {
+
+        auto& vals = index.second;
+
+	for(uint32_t i = 0; i < vals.size(); i++) {
+
+	    reordered_input.push_back(input[vals[i]]);
+	    map_to_original_index[reordered_indices] = vals[i];
+	    reordered_indices++;
+
+	}
+
+    }
+
+    input.swap(reordered_input);
+
     /*Find points within epsilon distance within a cell */
     for(auto index:spatial_index) {
 
-        auto vals = index.second;
+        auto& vals = index.second;
 
         for(uint32_t i = 0; i < vals.size(); i++) {
 
@@ -276,7 +297,7 @@ int main(int argc, char** argv) {
 
 	     for(auto p:points_in_cluster.second) {
 
-                 cluster_info[p] = points_in_cluster.first; 
+                 cluster_info[map_to_original_index[p]] = points_in_cluster.first; 
 
              }
 
