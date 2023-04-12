@@ -20,7 +20,26 @@
 #include "Data.cpp"
 #include <climits>
 
-//#pragma omp declare reduction (merge : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
+
+template<typename T>
+static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> swapped_dimensions, std::vector<T> dimensions,
+		                  std::vector<T> mins, T epsilon) {
+
+    uint32_t key = 0;
+    uint32_t accumulator = 1;
+
+    for(auto d : swapped_dimensions) {
+
+        size_t index = static_cast<size_t>(std::floor((point[d] - mins[d]) / (epsilon)));
+        key += index * accumulator;
+        accumulator *= dimensions[d];
+
+    }
+
+    return key;
+
+}
+
 
 #pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
@@ -33,7 +52,7 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
     
     /*Get all neighbours of that point so that you dont have to compute neighbours to that point again */
 
-    #pragma omp parallel for reduction(merge:neighbours)
+    //#pragma omp parallel for reduction(merge:neighbours)
     for(auto& pt : nearest_neighbours[index]) {
 
         if(!visited[pt]) {
@@ -133,14 +152,14 @@ int main(int argc, char** argv) {
 
     for(uint32_t j = 0; j < number_of_features; j++) {
 
-	dimensions[j] = std::ceil((maxs[j] - mins[j]) / (2.0 * epsilon)) + 1;
+	dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
 	total_cells *= dimensions[j];
 
     }
 
     std::cout<<"Total cells  "<<total_cells<< std::endl;
 
-    std::vector<DATA_TYPE> m_swapped_dimensions(number_of_features, 0.0);
+    std::vector<uint32_t> m_swapped_dimensions(number_of_features, 0.0);
     /*SWAP dimensions */
     std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
     
@@ -149,69 +168,74 @@ int main(int argc, char** argv) {
             return dimensions[a] < dimensions[b];
     });
 
-     for(uint32_t i = 0; i < n; i++) {
+    std::map<uint32_t, std::set<uint32_t>> neighbour_keys;
 
-	uint32_t key = 0;
-	uint32_t accumulator = 1;
+    for(uint32_t i = 0; i < n; i++) {
 
-        for(uint32_t j = 0; j < number_of_features; j++) {
+	auto key = computeKey(input[i], m_swapped_dimensions, dimensions, mins, epsilon);
 
-            size_t index = static_cast<size_t>(std::floor((input[i][j] - mins[j]) / (2.0 * epsilon)));
-            key += index * accumulator;
-            accumulator *= dimensions[j];
-            
-        }	    
+	neighbour_keys[key].insert(key);
+#if 0
+	for(uint32_t j = 0; j < number_of_features; j++) {
+
+	    auto pt1 = input[i];
+
+	    auto pt2 = input[i];
+
+	    pt1[j] += epsilon;
+
+	    if((pt2[j] - epsilon) > mins[j])
+	        pt2[j] -= epsilon;
+
+
+
+	    neighbour_keys[key].insert(computeKey(pt1, m_swapped_dimensions, dimensions, mins, epsilon));
+
+	    neighbour_keys[key].insert(computeKey(pt2, m_swapped_dimensions, dimensions, mins, epsilon));
 	
+	}
+#endif	
 	spatial_index[key].push_back(i);
 
     }
 
+    std::cout<<"Keys computed"<<std::endl;
+    
     std::unordered_map<uint32_t, std::vector<uint32_t>> nearest_neighbours;
 
     uint32_t epsilon_hex = Util::asuint32(epsilon_square);
     
-    /* Reorder the cells */
-    std::vector<std::vector<DATA_TYPE>> reordered_input;
-    uint32_t reordered_indices = 0;
-     std::unordered_map<uint32_t, uint32_t> map_to_original_index;
+    /*Find points within epsilon distance within a cell */
+    for(auto index:neighbour_keys) {
 
-    for(auto index:spatial_index) {
+        std::vector<uint32_t> vals;
 
-        auto& vals = index.second;
+        for(auto neighbour_key:index.second) {
 
-	for(uint32_t i = 0; i < vals.size(); i++) {
+	    for(auto pt : spatial_index[neighbour_key]) {
 
-	    reordered_input.push_back(input[vals[i]]);
-	    map_to_original_index[reordered_indices] = vals[i];
-	    reordered_indices++;
+	        vals.push_back(pt);
+
+	    }
 
 	}
 
-    }
-
-    input.swap(reordered_input);
-
-    /*Find points within epsilon distance within a cell */
-    for(auto index:spatial_index) {
-
-        auto& vals = index.second;
-
         for(uint32_t i = 0; i < vals.size(); i++) {
 
-	    std::vector<uint32_t>& neighbours =  nearest_neighbours[vals[i]];
-	    #pragma omp parallel for reduction(merge:neighbours)
-	    for(uint32_t k = i + 1; k < vals.size(); k++) {
+	    auto& neighbours =  nearest_neighbours[vals[i]];
 
-                if( Util::asuint32(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
+	    #pragma omp parallel for reduction(merge:neighbours)
+	    for(uint32_t k = 0; k < vals.size(); k++) {
+
+                if(Util::asuint32(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
 					                   input[vals[k]], number_of_features)) 
 		                                            <= epsilon_hex) {
-                   
+                    
 		    neighbours.push_back(vals[k]);
-		    #pragma omp critical
-		    nearest_neighbours[vals[k]].push_back(vals[i]);
 		}
 	    
 	    }
+
 	}
 
     }
@@ -271,20 +295,7 @@ int main(int argc, char** argv) {
 	}
 
     }
-
-#if 0
-     for(auto a:core_points) {
-
-       std::cout<<a.first<<" - ";
-       for(auto b:a.second) {
-
-           std::cout<<b<<", ";
-       }
-       std::cout<<std::endl;
-
-    }
-#endif
-   
+    
     end_time = omp_get_wtime();
 
     std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
@@ -293,13 +304,16 @@ int main(int argc, char** argv) {
 
     start_time = omp_get_wtime();
     
-    for(auto& points_in_cluster:core_points) {
+    for(auto& points_in_cluster:nearest_neighbours) {
 
-	     for(auto p:points_in_cluster.second) {
+	     if(points_in_cluster.second.size() >= min_points) {
 
-                 cluster_info[map_to_original_index[p]] = points_in_cluster.first; 
+	         for(auto p:points_in_cluster.second) {
 
-             }
+                     cluster_info[p] = points_in_cluster.first; 
+
+                 }
+	     }
 
     }
 
@@ -308,7 +322,7 @@ int main(int argc, char** argv) {
     std::cout << "Time to assign clusters " << (end_time - start_time) <<"s"<< std::endl;
 
     std::cout << " Clustering completed " << std::endl;
-    std::cout <<" Number of clusters : "<<core_points.size()<<std::endl;
+    std::cout <<" Number of clusters : "<<num_clusters<<std::endl;
     std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
     std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
 
