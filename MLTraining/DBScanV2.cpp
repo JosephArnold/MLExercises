@@ -46,7 +46,7 @@ template<typename T>
 static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
 		                                  uint32_t epsilon, uint32_t n, uint32_t number_of_features, 
 						  std::vector<bool>& visited,
-						  std::unordered_map<uint32_t, std::vector<uint32_t>>& nearest_neighbours) {
+						  std::unordered_map<uint32_t, std::set<uint32_t>>& nearest_neighbours) {
 
     std::vector<uint32_t> neighbours;
     
@@ -85,6 +85,8 @@ static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<s
 }
 
 #pragma omp declare reduction (unordered_map_add : std::map<uint32_t,  std::set<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
+
+#pragma omp declare reduction (merge_set : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
 int main(int argc, char** argv) {
     
@@ -201,7 +203,7 @@ int main(int argc, char** argv) {
 
     std::cout<<"Keys computed"<<std::endl;
     
-    std::unordered_map<uint32_t, std::vector<uint32_t>> nearest_neighbours;
+    std::unordered_map<uint32_t, std::set<uint32_t>> nearest_neighbours;
 
     uint32_t epsilon_hex = Util::asuint32(epsilon_square);
     
@@ -224,14 +226,14 @@ int main(int argc, char** argv) {
 
 	    auto& neighbours =  nearest_neighbours[vals[i]];
 
-	    #pragma omp parallel for reduction(merge:neighbours)
+	    #pragma omp parallel for reduction(merge_set:neighbours)
 	    for(uint32_t k = 0; k < vals.size(); k++) {
 
                 if(Util::asuint32(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
 					                   input[vals[k]], number_of_features)) 
 		                                            <= epsilon_hex) {
                     
-		    neighbours.push_back(vals[k]);
+		    neighbours.insert(vals[k]);
 		}
 	    
 	    }
