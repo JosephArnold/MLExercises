@@ -1,7 +1,6 @@
 // MLTraining.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#define BLOCK_SIZE 4
 #define DATA_TYPE float
 
 #include <iostream>
@@ -20,7 +19,6 @@
 #include "Data.cpp"
 #include <climits>
 
-
 template<typename T>
 static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> swapped_dimensions, std::vector<T> dimensions,
 		                  std::vector<T> mins, T epsilon) {
@@ -30,7 +28,7 @@ static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> sw
 
     for(auto d : swapped_dimensions) {
 
-        size_t index = static_cast<size_t>(std::floor((point[d] - mins[d]) / (epsilon)));
+        size_t index = static_cast<size_t>(std::floor((point[d] - mins[d]) / (2.0 * epsilon)));
         key += index * accumulator;
         accumulator *= dimensions[d];
 
@@ -43,44 +41,44 @@ static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> sw
 
 #pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline std::vector<uint32_t> getNeighbours(uint32_t index,  std::vector<std::vector<T>>& dataunordered_set, 
-		                                  uint32_t epsilon, uint32_t n, uint32_t number_of_features, 
-						  std::vector<bool>& visited,
-						  std::unordered_map<uint32_t, std::set<uint32_t>>& nearest_neighbours) {
+static inline void getNeighbours(std::vector<uint32_t>& neighbours, 
+		                 const uint32_t& index,  
+				 std::vector<std::vector<T>>& dataunordered_set, 
+		                 uint32_t& epsilon, uint32_t& number_of_features, 
+				 std::vector<bool>& visited,
+				 std::unordered_map<uint32_t, std::set<uint32_t>>& nearest_neighbours,
+				 std::vector<uint32_t>& point_key_map,
+				 std::map<uint32_t, std::vector<uint32_t>>& spatial_index) {
 
-    std::vector<uint32_t> neighbours;
+    std::vector<uint32_t> vals;
+
+    uint32_t& cell_key = point_key_map[index];
+
+    std::set<uint32_t>& neighbouring_keys = nearest_neighbours[cell_key];
     
-    /*Get all neighbours of that point so that you dont have to compute neighbours to that point again */
+    for(auto& pt : neighbouring_keys) {
 
-    //#pragma omp parallel for reduction(merge:neighbours)
-    for(auto& pt : nearest_neighbours[index]) {
-
-        if(!visited[pt]) {
-            neighbours.push_back(pt);
-            visited[pt] = true;
-        }
+        auto& points = spatial_index[pt];
+	vals.insert(vals.end(), points.begin(), points.end());
 
     }
 
-    /*we no longer need to store the neighbours */
-    nearest_neighbours.erase(index);
+    const uint32_t& n = vals.size();
 
-    std::vector<T> curr_point = dataunordered_set[index];
+    std::vector<T>& curr_point = dataunordered_set[index];
 
     #pragma omp parallel for reduction(merge:neighbours)
     for (uint32_t i = 0; i < n; i++) {
 
-        if(!visited[i] && ( 
-	    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[i], curr_point, number_of_features))
+        if(!visited[vals[i]] && ( 
+	    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]], curr_point, number_of_features))
 	        <= epsilon)) {
-	        neighbours.push_back(i);
-	        visited[i] = true;
+	        neighbours.push_back(vals[i]);
+	        visited[vals[i]] = true;
 
 	}
 
     }
-
-    return neighbours;
 
 }
 
@@ -136,7 +134,7 @@ int main(int argc, char** argv) {
     std::vector<DATA_TYPE> maxs(number_of_features, 0.0);
     std::vector<DATA_TYPE> dimensions(number_of_features, 0.0);
 
-    std::map<uint32_t, std::vector<DATA_TYPE>> spatial_index;
+    std::map<uint32_t, std::vector<uint32_t>> spatial_index;
 
     for(uint32_t i = 0; i < n; i++) {
 
@@ -152,6 +150,7 @@ int main(int argc, char** argv) {
 
     }
 
+    /*Compute cell dimensions */
     for(uint32_t j = 0; j < number_of_features; j++) {
 
 	dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
@@ -161,7 +160,7 @@ int main(int argc, char** argv) {
 
     std::cout<<"Total cells  "<<total_cells<< std::endl;
 
-    std::vector<uint32_t> m_swapped_dimensions(number_of_features, 0.0);
+    std::vector<uint32_t> m_swapped_dimensions(number_of_features, 0);
     /*SWAP dimensions */
     std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
     
@@ -170,78 +169,90 @@ int main(int argc, char** argv) {
             return dimensions[a] < dimensions[b];
     });
 
-    std::map<uint32_t, std::set<uint32_t>> neighbour_keys;
+    std::unordered_map<uint32_t, std::set<uint32_t>> neighbour_keys;
+
+    std::vector<uint32_t> point_key_map(n, 0);
 
     for(uint32_t i = 0; i < n; i++) {
 
 	auto key = computeKey(input[i], m_swapped_dimensions, dimensions, mins, epsilon);
 
-	neighbour_keys[key].insert(key);
-#if 0
-	for(uint32_t j = 0; j < number_of_features; j++) {
-
-	    auto pt1 = input[i];
-
-	    auto pt2 = input[i];
-
-	    pt1[j] += epsilon;
-
-	    if((pt2[j] - epsilon) > mins[j])
-	        pt2[j] -= epsilon;
-
-
-
-	    neighbour_keys[key].insert(computeKey(pt1, m_swapped_dimensions, dimensions, mins, epsilon));
-
-	    neighbour_keys[key].insert(computeKey(pt2, m_swapped_dimensions, dimensions, mins, epsilon));
-	
-	}
-#endif	
 	spatial_index[key].push_back(i);
+
+	point_key_map[i] = key;
 
     }
 
     std::cout<<"Keys computed"<<std::endl;
+
+     std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
+
+    /*Compute cell index */
+    uint32_t accumulator = 0;
+
+        // sum up the offset into the points array
+    for (auto& cell : spatial_index) {
+            auto& index  = m_cell_index[cell.first];
+            index.first  = accumulator;
+            index.second = cell.second.size();
+            accumulator += cell.second.size();
     
-    std::unordered_map<uint32_t, std::set<uint32_t>> nearest_neighbours;
+    }
 
-    uint32_t epsilon_hex = Util::asuint32(epsilon_square);
+    // introduce an end dummy
+    m_cell_index[total_cells].first  = spatial_index.size();
+    m_cell_index[total_cells].second = 0;
     
-    /*Find points within epsilon distance within a cell */
-    for(auto index:neighbour_keys) {
+    
+    /*compute neighbouring cells */
 
-        std::vector<uint32_t> vals;
+    for(auto& cell : spatial_index) {
+    
+        std::vector<uint32_t> neighboring_cells;
+        neighboring_cells.reserve(std::pow(3, number_of_features));
+        neighboring_cells.push_back(cell.first);
 
-        for(auto neighbour_key:index.second) {
+        // cell accumulators
+        uint32_t cells_in_lower_space = 1;
+        uint32_t cells_in_current_space = 1;
+        uint32_t number_of_points = m_cell_index.find(cell.first)->second.second;
 
-	    for(auto pt : spatial_index[neighbour_key]) {
+        // fetch all existing neighboring cells
+        for (size_t d : m_swapped_dimensions) {
+             cells_in_current_space *= dimensions[d];
 
-	        vals.push_back(pt);
+            for (size_t i = 0, end = neighboring_cells.size(); i < end; ++i) {
+                const uint32_t current_cell = neighboring_cells[i];
 
-	    }
+                // check "left" neighbor - a.k.a the cell in the current dimension that has a lower number
+                const uint32_t left = current_cell - cells_in_lower_space;
+                const auto found_left = m_cell_index.find(left);
+                if (current_cell % cells_in_current_space >= cells_in_lower_space) {
+                    neighboring_cells.push_back(left);
+                    number_of_points += found_left != m_cell_index.end() ? found_left->second.second : 0;
+                }
+                // check "right" neighbor - a.k.a the cell in the current dimension that has a higher number
+                const uint32_t right = current_cell + cells_in_lower_space;
+                const auto found_right = m_cell_index.find(right);
+                if (current_cell % cells_in_current_space < cells_in_current_space - cells_in_lower_space) {
+                    neighboring_cells.push_back(right);
+                    number_of_points += found_right != m_cell_index.end() ? found_right->second.second : 0;
+                }
+            }
+            cells_in_lower_space = cells_in_current_space;
+       }
 
-	}
+       for(auto pt:neighboring_cells) {
 
-        for(uint32_t i = 0; i < vals.size(); i++) {
+           neighbour_keys[cell.first].insert(pt);
 
-	    auto& neighbours =  nearest_neighbours[vals[i]];
-
-	    #pragma omp parallel for reduction(merge_set:neighbours)
-	    for(uint32_t k = 0; k < vals.size(); k++) {
-
-                if(Util::asuint32(Util::calculateEuclideanDist<DATA_TYPE>(input[vals[i]], 
-					                   input[vals[k]], number_of_features)) 
-		                                            <= epsilon_hex) {
-                    
-		    neighbours.insert(vals[k]);
-		}
-	    
-	    }
-
-	}
+       }
 
     }
 
+    
+    uint32_t epsilon_hex = Util::asuint32(epsilon_square);
+    
     std::unordered_map<uint32_t, std::vector<uint32_t>> core_points;
     /*initialize all points as noise points */
     std::vector<bool> visited(n, false);
@@ -269,15 +280,15 @@ int main(int argc, char** argv) {
 	    visited[i] = true;
 
 	    while(!compute.empty()) {
-		   
-		std::vector<uint32_t> neighbours;
 
-		uint32_t index = compute[0];
+                std::vector<uint32_t> neighbours;
+
+		uint32_t& index = compute[0];
 
 		compute.erase(compute.begin());
 
-		neighbours = getNeighbours(index, input, epsilon_hex, 
-				            n, number_of_features, visited, nearest_neighbours);
+		getNeighbours(neighbours, index, input, epsilon_hex, number_of_features, visited, 
+		              neighbour_keys, point_key_map, spatial_index);
 
 		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
 		compute.insert(compute.end(), neighbours.begin(), neighbours.end());
@@ -306,16 +317,16 @@ int main(int argc, char** argv) {
 
     start_time = omp_get_wtime();
     
-    for(auto& points_in_cluster:nearest_neighbours) {
+    for(auto& points_in_cluster:core_points) {
 
-	     if(points_in_cluster.second.size() >= min_points) {
+        if(points_in_cluster.second.size() >= min_points) {
 
-	         for(auto p:points_in_cluster.second) {
+	    for(auto p:points_in_cluster.second) {
 
-                     cluster_info[p] = points_in_cluster.first; 
+                cluster_info[p] = points_in_cluster.first; 
 
-                 }
-	     }
+            }
+	 }
 
     }
 
