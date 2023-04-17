@@ -38,13 +38,34 @@ static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> sw
 
 }
 
+template<typename T>
+static inline void compute_keys(std::vector<std::vector<T>>& data_set, const uint32_t n,
+		                std::vector<uint32_t>& point_key_map,
+				std::map<uint32_t, std::vector<uint32_t>>& spatial_index,
+		                std::vector<uint32_t> swapped_dimensions, std::vector<T> dimensions, 
+		                std::vector<T> mins, T epsilon) {
+
+    for(uint32_t i = 0; i < n; i++) {
+
+        auto key = computeKey(data_set[i], swapped_dimensions, dimensions, mins, epsilon);
+
+        spatial_index[key].push_back(i);
+
+        point_key_map[i] = key;
+
+    }
+
+
+}
+
+
 
 #pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
 static inline void getNeighbours(std::vector<uint32_t>& neighbours, 
 		                 const uint32_t& index,  
 				 std::vector<std::vector<T>>& dataunordered_set, 
-		                 uint32_t& epsilon, uint32_t& number_of_features, 
+		                 const uint32_t& epsilon, const uint32_t& number_of_features, 
 				 std::vector<bool>& visited,
 				 std::unordered_map<uint32_t, std::set<uint32_t>>& nearest_neighbours,
 				 std::vector<uint32_t>& point_key_map,
@@ -67,16 +88,107 @@ static inline void getNeighbours(std::vector<uint32_t>& neighbours,
 
     std::vector<T>& curr_point = dataunordered_set[index];
 
-    #pragma omp parallel for reduction(merge:neighbours)
-    for (uint32_t i = 0; i < n; i++) {
+    if(n < 8) {
 
-        if(!visited[vals[i]] && ( 
-	    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]], curr_point, number_of_features))
+        for (uint32_t i = 0; i < n; i++) {
+
+            if(!visited[vals[i]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i]);
+                visited[vals[i]] = true;
+
+            }
+
+        }
+
+
+    }
+    else {
+        #pragma omp parallel for reduction(merge:neighbours)
+        for (uint32_t i = 0; i < n - 8; i = i + 8) {
+
+            if(!visited[vals[i]] && ( 
+	        Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]], curr_point, number_of_features))
 	        <= epsilon)) {
 	        neighbours.push_back(vals[i]);
 	        visited[vals[i]] = true;
 
+	    }
+
+	    if(!visited[vals[i + 1]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 1]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 1]);
+                visited[vals[i + 1]] = true;
+
+            }
+
+	    if(!visited[vals[i + 2]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 2]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 2]);
+                visited[vals[i + 2]] = true;
+
+            }
+
+	    if(!visited[vals[i + 3]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 3]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 3]);
+                visited[vals[i + 3]] = true;
+
+            }
+
+	    if(!visited[vals[i + 4]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 4]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 4]);
+                visited[vals[i + 4]] = true;
+
+            }
+
+            if(!visited[vals[i + 5]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 5]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 5]);
+                visited[vals[i + 5]] = true;
+
+            }
+
+            if(!visited[vals[i + 6]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 6]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 6]);
+                visited[vals[i + 6]] = true;
+
+            }
+
+            if(!visited[vals[i + 7]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 7]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i + 7]);
+                visited[vals[i + 7]] = true;
+
+            }
+
+
+
 	}
+
+	uint32_t i = n - (n % 8);
+
+	for (; i < n; i++) {
+
+            if(!visited[vals[i]] && (
+                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]], curr_point, number_of_features))
+                <= epsilon)) {
+                neighbours.push_back(vals[i]);
+                visited[vals[i]] = true;
+
+            }
+
+        }
 
     }
 
@@ -173,19 +285,12 @@ int main(int argc, char** argv) {
 
     std::vector<uint32_t> point_key_map(n, 0);
 
-    for(uint32_t i = 0; i < n; i++) {
-
-	auto key = computeKey(input[i], m_swapped_dimensions, dimensions, mins, epsilon);
-
-	spatial_index[key].push_back(i);
-
-	point_key_map[i] = key;
-
-    }
-
+    /*compute keys for all cells */
+    compute_keys(input, n, point_key_map, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
+    
     std::cout<<"Keys computed"<<std::endl;
 
-     std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
+    std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
 
     /*Compute cell index */
     uint32_t accumulator = 0;
