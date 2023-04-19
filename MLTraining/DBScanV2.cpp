@@ -290,12 +290,41 @@ int main(int argc, char** argv) {
     
     std::cout<<"Keys computed"<<std::endl;
 
+    std::vector<std::vector<DATA_TYPE>> reordered_input;
+    std::map<uint32_t, uint32_t> map_to_original;
+    /*Reorder the cells based on their spatial indexing */
+   
+    uint32_t counter = 0;
+
+    for (auto& cell : spatial_index) {
+
+        auto& index  = cell.second;
+        
+	for(auto &pt:index) {
+
+            reordered_input.push_back(input[pt]);
+
+	    map_to_original[counter++] = pt; 
+
+	}
+
+    }
+
+    input.swap(reordered_input);
+
+    spatial_index.clear();
+
+    point_key_map.clear();
+
+    /*compute keys again */
+    compute_keys(input, n, point_key_map, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
+
     std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
 
     /*Compute cell index */
     uint32_t accumulator = 0;
 
-        // sum up the offset into the points array
+    // sum up the offset into the points array
     for (auto& cell : spatial_index) {
             auto& index  = m_cell_index[cell.first];
             index.first  = accumulator;
@@ -354,16 +383,15 @@ int main(int argc, char** argv) {
        }
 
     }
-
     
     uint32_t epsilon_hex = Util::asuint32(epsilon_square);
     
     std::unordered_map<uint32_t, std::vector<uint32_t>> core_points;
-    /*initialize all points as noise points */
+    
+    /*initialize all points as not visited */
     std::vector<bool> visited(n, false);
 
     std::vector<uint32_t> cluster_info(n, 0);
-    /* For each point determine the number of neighbourhood points*/
     
     std::cout << "Evaluating core points "<<std::endl;     
    
@@ -428,7 +456,7 @@ int main(int argc, char** argv) {
 
 	    for(auto p:points_in_cluster.second) {
 
-                cluster_info[p] = points_in_cluster.first; 
+                cluster_info[map_to_original[p]] = points_in_cluster.first; 
 
             }
 	 }
