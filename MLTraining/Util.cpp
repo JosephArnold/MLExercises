@@ -54,7 +54,7 @@ class Util {
     }
 
     template<typename T>
-    static int32_t writeToCSVfile(std::vector<data<T>>& dataset,  std::string output_filename) {
+    static int32_t writeToCSVfile(std::vector<Data<T>>& dataset,  std::string output_filename) {
 	
 	std::ofstream outfile;
         outfile.open (output_filename);
