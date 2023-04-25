@@ -91,7 +91,7 @@ static inline void getNeighbours(std::vector<uint32_t>& neighbours,
 
     }
     else {
-        #pragma omp parallel for reduction(merge:neighbours)
+        #pragma omp parallel for schedule(dynamic, 32) reduction(merge:neighbours)
         for (uint32_t i = 0; i < n - 8; i = i + 8) {
 
             if(!dataunordered_set[vals[i]].isVisited() && ( 
@@ -186,7 +186,7 @@ static inline void getNeighbours(std::vector<uint32_t>& neighbours,
 
 }
 
-#pragma omp declare reduction (unordered_map_add : std::map<uint32_t,  std::set<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (unordered_map_add : std::unordered_map<uint32_t,  std::vector<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
 #pragma omp declare reduction (merge_set : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
@@ -404,6 +404,7 @@ int main(int argc, char** argv) {
 
     uint32_t num_clusters = 0;
 
+//#pragma omp parallel private(dataset) private(num_clusters) reduction(unordered_map_add: core_points)
     for (uint32_t i = 0; i < n; i++) {
 
 	if(!dataset[i].isVisited()) { 
@@ -414,8 +415,6 @@ int main(int argc, char** argv) {
 	    compute.push_back(i);
 
 	    cluster.push_back(i);
-
-	    dataset[i].markVisited();
 
 	    std::vector<uint32_t> vals;
 	    
@@ -440,14 +439,15 @@ int main(int argc, char** argv) {
                     for(auto& pt : neighbouring_keys) {
 
                         auto& points = spatial_index[pt];
+			
                         vals.insert(vals.end(), points.begin(), points.end());
 
                     }
 
 		}
-
+                
 		getNeighbours(neighbours, index, dataset, epsilon_hex, number_of_features, vals);
-
+                
 		prev_key = cell_key;
 
 		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
@@ -458,7 +458,7 @@ int main(int argc, char** argv) {
 	    }
 
 	    if(cluster.size() >= min_points) {
-	        
+
 		core_points[++num_clusters] = cluster;
 		
 		std::cout<<"cluster "<<num_clusters<<" has "<<cluster.size()<<" points"<<std::endl;
