@@ -26,6 +26,28 @@ class Util {
 	}
 
 	return sum;
+/*Enable on  ARM64FX */
+#if 0 
+	float sum = 0.0f;
+        uint32_t i = 0;
+
+        for (i = 0; i < n; i += svcntw()) {
+
+            svbool_t pg = svwhilelt_b32(i, n);
+
+            svfloat32_t va = svld1(pg, &a[i]);
+            svfloat32_t vb = svld1(pg, &b[i]);
+
+            svfloat32_t diff = svsub_f32_z(pg, va, vb);
+
+            svfloat32_t square = svmul_f32_z(pg, diff, diff);
+
+            sum += svaddv_f32(svptrue_b32(), square);
+
+        }
+
+        return sum;
+#endif
 
     }
 
