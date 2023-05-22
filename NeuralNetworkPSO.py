@@ -51,13 +51,13 @@ class PimaClassifier(nn.Module):
 
 #model = PimaClassifier()
 #print(model)
-n_epochs = 200
-batch_size = 55
+n_epochs = 100
+batch_size = 32
 n_input_layer = 8
 n_layer1 = 12
 n_layer2 = 8
 n_output_layer = 1
-num_of_particles = 500
+num_of_particles = 200
 dimensions = 221
 
 loss_fn = nn.BCELoss()  # binary cross entropy
@@ -84,7 +84,9 @@ global_best_error =  9999.0
 particle_best_error = torch.full((num_of_particles, 1), 9999.0)
 
 #initialize scalar values of inertia weight 'w', cognitive weight 'c1', global weight 'c2' and random factors 'r1' and 'r2'
-w = 0.78
+w = 0.9
+lamda = 0.9
+weight_decr_step = (0.9 - 0.4) / n_epochs
 c1 = 1.4845
 c2 = 1.4845
 #c2 = random.uniform(0, 1)
@@ -143,7 +145,7 @@ for epoch in range(n_epochs):
                 global_best_error = loss
                 global_best_position = curr_weight
             
-            vt_next[j] =  torch.add(torch.mul(w , vt[j]) , torch.add(torch.mul(c1 * r1 , torch.sub(particle_best_positions[j] , curr_weight)) , torch.mul(c2 * r2 , torch.sub(global_best_position , curr_weight))))
+            vt_next[j] = (w * vt[j] + ((c1 * r1 * (particle_best_positions[j] - curr_weight)) + (c2 * r2 * (global_best_position - curr_weight)))) * (1 - lamda) + lamda * vt[j]
            
             particle_positions[j] = torch.add(particle_positions[j] , vt_next[j])      
 
@@ -158,7 +160,7 @@ for epoch in range(n_epochs):
         #print(f' latest loss {loss}')
         #exit()
 
-    #print(global_best_position)
+    w -= weight_decr_step
     print(f'Finished epoch {epoch}, latest loss {global_best_error}')
     
 with torch.no_grad():
