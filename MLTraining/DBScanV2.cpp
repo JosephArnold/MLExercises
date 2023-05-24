@@ -54,7 +54,7 @@ static inline void compute_keys(std::vector<Data<T>>& data_set, const uint32_t n
 
     }
 
-
+       
 }
 
 
@@ -167,7 +167,7 @@ static inline void getNeighbours(std::vector<uint32_t>& neighbours,
             }
 
 	}
-
+	/*dont have to take care of this in case of variable vector length */
 	uint32_t i = n - (n % 8);
 
 	for (; i < n; i++) {
@@ -199,6 +199,8 @@ int main(int argc, char** argv) {
     std::string output_filename = "";
     std::vector<std::vector<DATA_TYPE>> input;
     double start_time, end_time;
+
+    std::map<uint32_t, uint32_t> cell_size;
   
     start_time = omp_get_wtime();
     
@@ -287,7 +289,7 @@ int main(int argc, char** argv) {
 
     /*compute keys for all cells */
     compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
-    
+
     std::cout<<"Keys computed"<<std::endl;
 
     std::vector<std::vector<DATA_TYPE>> reordered_input;
@@ -327,6 +329,9 @@ int main(int argc, char** argv) {
 
      /*compute keys again */
     compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
+
+    for(auto& cell:spatial_index)
+        cell_size[cell.first] = cell.second.size();
 
     std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
 
@@ -438,9 +443,13 @@ int main(int argc, char** argv) {
 
                     for(auto& pt : neighbouring_keys) {
 
-                        auto& points = spatial_index[pt];
+			/*only if a cell still contains points that are not added to a cluster */    
+			if(cell_size[pt] > 0) {
+                            auto& points = spatial_index[pt];
 			
-                        vals.insert(vals.end(), points.begin(), points.end());
+                            vals.insert(vals.end(), points.begin(), points.end());
+
+			}
 
                     }
 
@@ -451,9 +460,22 @@ int main(int argc, char** argv) {
 		prev_key = cell_key;
 
 		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
-		compute.insert(compute.end(), neighbours.begin(), neighbours.end());
+		//compute.insert(compute.end(), neighbours.begin(), neighbours.end());
 
-		cluster.insert(cluster.end(), neighbours.begin(), neighbours.end());
+		//cluster.insert(cluster.end(), neighbours.begin(), neighbours.end());
+		
+
+		for(auto& pt:neighbours) {
+
+		    compute.push_back(pt);
+
+		    cluster.push_back(pt);
+
+		    /*This is to keep a tab of the number of points that are not added yet to a cluster */
+		    cell_size[dataset[pt].getCellNumber()]--;
+
+		}
+
 
 	    }
 
