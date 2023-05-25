@@ -28,7 +28,7 @@ static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> sw
 
     for(auto d : swapped_dimensions) {
 
-        size_t index = static_cast<size_t>(std::floor((point[d] - mins[d]) / (2.0 * epsilon)));
+        size_t index = static_cast<size_t>(std::floor((point[d] - mins[d]) / (epsilon)));
         key += index * accumulator;
         accumulator *= dimensions[d];
 
