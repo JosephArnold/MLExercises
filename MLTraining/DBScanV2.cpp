@@ -61,14 +61,15 @@ static inline void compute_keys(std::vector<Data<T>>& data_set, const uint32_t n
 #pragma omp declare reduction (merge_set : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction (merge : std::vector<uint32_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline void getNeighbours(std::set<uint32_t>& neighbours, 
-		                 std::vector<uint32_t>& indices,  
+static inline std::set<uint32_t> getNeighbours(std::vector<uint32_t>& indices,  
 				 std::vector<Data<T>>& dataunordered_set, 
 		                 const uint32_t& epsilon, const uint32_t& number_of_features, 
 				 std::vector<uint32_t>& vals) {
 
     const uint32_t& n = vals.size();
     const uint32_t& indices_size = indices.size();
+
+    std::set<uint32_t> neighbours;
 
     #pragma omp parallel for schedule(dynamic) reduction(merge_set:neighbours)
     for(uint32_t index = 0; index < indices_size; index++) {
@@ -179,6 +180,8 @@ static inline void getNeighbours(std::set<uint32_t>& neighbours,
         }
 
     }
+
+    return neighbours;
 
 }
 
@@ -422,8 +425,6 @@ int main(int argc, char** argv) {
 
 		std::set<uint32_t> vals_set;
 
-                std::set<uint32_t> neighbours;
-
 		std::vector<uint32_t> indices;
 		    
 		indices.insert(indices.end(), compute.begin(), compute.end());
@@ -456,18 +457,20 @@ int main(int argc, char** argv) {
                 
 		std::vector<uint32_t> vals(vals_set.begin(), vals_set.end());
 		
-		getNeighbours(neighbours, indices, dataset, epsilon_hex, number_of_features, vals);
-                
-		for(auto& pt:neighbours) {
+		std::set<uint32_t> neighbours = getNeighbours(indices, dataset, epsilon_hex, number_of_features, vals);
+               
+		std::vector<uint32_t> neighbours_v(neighbours.begin(), neighbours.end());
+	        #pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)	
+		for(uint32_t k = 0; k < neighbours_v.size(); k++) {
 
-		    compute.push_back(pt);
+		    compute.push_back(neighbours_v[k]);
 
-		    cluster.push_back(pt);
+		    cluster.push_back(neighbours_v[k]);
 
 		    /*This is to keep a tab of the number of points that are not added yet to a cluster */
-		    cell_size[dataset[pt].getCellNumber()]--;
+		    cell_size[dataset[neighbours_v[k]].getCellNumber()]--;
 
-		    dataset[pt].markVisited();
+		    dataset[neighbours_v[k]].markVisited();
 
 		}
 
@@ -496,15 +499,11 @@ int main(int argc, char** argv) {
     
     for(auto& points_in_cluster:core_points) {
 
-        if(points_in_cluster.second.size() >= min_points) {
-
 	    for(auto p:points_in_cluster.second) {
 
                 cluster_info[p] = points_in_cluster.first; 
 
             }
-	 }
-
     }
 
     end_time = omp_get_wtime();
