@@ -86,7 +86,6 @@ static inline void getNeighbours(std::set<uint32_t>& neighbours,
 				                               number_of_features))
                     <= epsilon)) {
                         neighbours.insert(vals[i]);
-                        //dataunordered_set[vals[i]].markVisited();
 
                 }
 
@@ -98,104 +97,88 @@ static inline void getNeighbours(std::set<uint32_t>& neighbours,
             //#pragma omp parallel for schedule(dynamic, 32) reduction(merge_set:neighbours)
             for (uint32_t i = 0; i < n - 8; i = i + 8) {
 
-            if(!dataunordered_set[vals[i]].isVisited() && ( 
-	        Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
+                if(!dataunordered_set[vals[i]].isVisited() && ( 
+	            Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
 				                               curr_point, number_of_features))
-	        <= epsilon)) {
-	        neighbours.insert(vals[i]);
-	        //dataunordered_set[vals[i]].markVisited();
+	            <= epsilon)) {
+	            neighbours.insert(vals[i]);
+
+	        }
+
+	        if(!dataunordered_set[vals[i + 1]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 1]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 1]);
+
+                }
+
+	        if(!dataunordered_set[vals[i + 2]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 2]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 2]);
+
+                }
+
+	        if(!dataunordered_set[vals[i + 3]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 3]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 3]);
+
+                }
+
+	        if(!dataunordered_set[vals[i + 4]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 4]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 4]);
+
+                }
+
+                if(!dataunordered_set[vals[i + 5]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 5]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 5]);
+
+                }
+
+                if(!dataunordered_set[vals[i + 6]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 6]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 6]);
+
+                }
+
+                if(!dataunordered_set[vals[i + 7]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 7]].getFeatures(), 
+				                               curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i + 7]);
+
+                }
 
 	    }
+	    /*dont have to take care of this in case of variable vector length */
+	    uint32_t i = n - (n % 8);
 
-	    if(!dataunordered_set[vals[i + 1]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 1]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 1]);
-                //dataunordered_set[vals[i + 1]].markVisited();
+	    for (; i < n; i++) {
 
-            }
+                if(!dataunordered_set[vals[i]].isVisited() && (
+                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), curr_point, number_of_features))
+                    <= epsilon)) {
+                    neighbours.insert(vals[i]);
 
-	    if(!dataunordered_set[vals[i + 2]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 2]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 2]);
-                //dataunordered_set[vals[i + 2]].markVisited();
-
-            }
-
-	    if(!dataunordered_set[vals[i + 3]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 3]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 3]);
-                //dataunordered_set[vals[i + 3]].markVisited();
-
-            }
-
-	    if(!dataunordered_set[vals[i + 4]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 4]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 4]);
-                //dataunordered_set[vals[i + 4]].markVisited();
-
-            }
-
-            if(!dataunordered_set[vals[i + 5]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 5]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 5]);
-                //dataunordered_set[vals[i + 5]].markVisited();
-
-            }
-
-            if(!dataunordered_set[vals[i + 6]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 6]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 6]);
-                //dataunordered_set[vals[i + 6]].markVisited();
-
-            }
-
-            if(!dataunordered_set[vals[i + 7]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 7]].getFeatures(), 
-				                               curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i + 7]);
-                //dataunordered_set[vals[i + 7]].markVisited();
-
-            }
-
-	}
-	/*dont have to take care of this in case of variable vector length */
-	uint32_t i = n - (n % 8);
-
-	for (; i < n; i++) {
-
-            if(!dataunordered_set[vals[i]].isVisited() && (
-                Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), curr_point, number_of_features))
-                <= epsilon)) {
-                neighbours.insert(vals[i]);
-                //dataunordered_set[vals[i]].markVisited();
+                }
 
             }
 
         }
 
     }
-
-    }
-#if 0
-    for(auto& pt:neighbours) {
-
-        dataunordered_set[pt].markVisited();
-
-    }
-#endif
 
 }
 
@@ -422,7 +405,6 @@ int main(int argc, char** argv) {
 
     uint32_t num_clusters = 0;
 
-//#pragma omp parallel private(dataset) private(num_clusters) reduction(unordered_map_add: core_points)
     for (uint32_t i = 0; i < n; i++) {
 
 	if(!dataset[i].isVisited()) { 
@@ -443,19 +425,10 @@ int main(int argc, char** argv) {
                 std::set<uint32_t> neighbours;
 
 		std::vector<uint32_t> indices;
-/*	       
-		if(compute.size() > 10) {
-		    indices.insert(indices.end(), compute.begin(), compute.begin() + 10);
-		    compute.erase(compute.begin(), compute.begin() + 10);
-
-		}
-		else {
-*/
-		    indices.insert(indices.end(), compute.begin(), compute.end());
-		    compute.clear();
-
-//		}
-
+		    
+		indices.insert(indices.end(), compute.begin(), compute.end());
+		    
+		compute.clear();
 
 		for(uint32_t index:indices) {
 		
@@ -482,14 +455,9 @@ int main(int argc, char** argv) {
 		}
                 
 		std::vector<uint32_t> vals(vals_set.begin(), vals_set.end());
+		
 		getNeighbours(neighbours, indices, dataset, epsilon_hex, number_of_features, vals);
                 
-		//#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)
-		//compute.insert(compute.end(), neighbours.begin(), neighbours.end());
-
-		//cluster.insert(cluster.end(), neighbours.begin(), neighbours.end());
-		
-
 		for(auto& pt:neighbours) {
 
 		    compute.push_back(pt);
