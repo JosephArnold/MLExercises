@@ -413,26 +413,24 @@ int main(int argc, char** argv) {
 
 	if(!dataset[i].isVisited()) { 
         
-	    std::vector<uint32_t> compute;
             std::vector<uint32_t> cluster;
 
-	    compute.push_back(i);
+	    std::vector<uint32_t> indices;
+	    
+	    indices.push_back(i);
 
 	    uint32_t prev_key = INT_MAX;
 
-	    while(!compute.empty()) {
+	    while(!indices.empty()) {
 
 		std::set<uint32_t> vals_set;
-
-		std::vector<uint32_t> indices;
-		    
-		indices.insert(indices.end(), compute.begin(), compute.end());
-		    
-		compute.clear();
-
-		for(uint32_t index:indices) {
 		
-		    uint32_t cell_key = dataset[index].getCellNumber();
+		const uint32_t indices_size = indices.size();
+		
+		//#pragma omp parallel for reduction(merge_set:vals_set)
+		for(uint32_t index = 0; index < indices_size; index++) {
+		
+		    uint32_t cell_key = dataset[indices[index]].getCellNumber();
 
 		    if(cell_key != prev_key) {
 
@@ -440,14 +438,15 @@ int main(int argc, char** argv) {
 
                         for(auto& pt : neighbouring_keys) {
 
-			    /*only if a cell still contains points that are not added to a cluster */    
+			    /*only if a cell still contains points that are not added to a cluster
+			     * Using set to prevent duplicate entry of points  */    
 			    if(cell_size[pt] > 0) {
                                 auto& points = spatial_index[pt];
                                 vals_set.insert(points.begin(), points.end());
 
 			    }
 
-                        }
+                         }
 
 		    }
 
@@ -460,11 +459,13 @@ int main(int argc, char** argv) {
                
 		std::vector<uint32_t> neighbours_v(neighbours.begin(), neighbours.end());
 	        
-		#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)	
+		indices.clear();
+
+		#pragma omp parallel for reduction(merge:indices) reduction(merge:cluster)	
 		for(uint32_t k = 0; k < neighbours_v.size(); k++) {
 
-		    compute.push_back(neighbours_v[k]);
-
+		    indices.push_back(neighbours_v[k]);
+		    
 		    cluster.push_back(neighbours_v[k]);
 
 		    /*This is to keep a tab of the number of points that are not added yet to a cluster */
