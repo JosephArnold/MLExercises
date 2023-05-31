@@ -71,7 +71,7 @@ static inline std::set<uint32_t> getNeighbours(std::vector<uint32_t>& indices,
 
     std::set<uint32_t> neighbours;
 
-    #pragma omp parallel for schedule(dynamic) reduction(merge_set:neighbours)
+    #pragma omp parallel for reduction(merge_set:neighbours)
     for(uint32_t index = 0; index < indices_size; index++) {
     
         std::vector<T> curr_point = dataunordered_set[indices[index]].getFeatures();
@@ -95,6 +95,7 @@ static inline std::set<uint32_t> getNeighbours(std::vector<uint32_t>& indices,
 
         }
         else {
+
             //#pragma omp parallel for schedule(dynamic, 32) reduction(merge_set:neighbours)
             for (uint32_t i = 0; i < n - 8; i = i + 8) {
 
@@ -417,8 +418,6 @@ int main(int argc, char** argv) {
 
 	    compute.push_back(i);
 
-	    cluster.push_back(i);
-
 	    uint32_t prev_key = INT_MAX;
 
 	    while(!compute.empty()) {
@@ -460,7 +459,8 @@ int main(int argc, char** argv) {
 		std::set<uint32_t> neighbours = getNeighbours(indices, dataset, epsilon_hex, number_of_features, vals);
                
 		std::vector<uint32_t> neighbours_v(neighbours.begin(), neighbours.end());
-	        #pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)	
+	        
+		#pragma omp parallel for reduction(merge:compute) reduction(merge:cluster)	
 		for(uint32_t k = 0; k < neighbours_v.size(); k++) {
 
 		    compute.push_back(neighbours_v[k]);
