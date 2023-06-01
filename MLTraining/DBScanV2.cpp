@@ -1,6 +1,6 @@
 // MLTraining.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-
+#define BLOCK_SIZE 8
 #define DATA_TYPE float
 
 #include <iostream>
@@ -66,109 +66,26 @@ static inline std::set<uint32_t> getNeighbours(std::vector<uint32_t>& indices,
 		                 const uint32_t& epsilon, const uint32_t& number_of_features, 
 				 std::vector<uint32_t>& vals) {
 
-    const uint32_t& n = vals.size();
-    const uint32_t& indices_size = indices.size();
+    const uint32_t n = vals.size();
+    const uint32_t indices_size = indices.size();
 
     std::set<uint32_t> neighbours;
 
     #pragma omp parallel for reduction(merge_set:neighbours)
     for(uint32_t index = 0; index < indices_size; index++) {
-    
-        auto& curr_point = dataunordered_set[indices[index]].getFeatures();
+   
+	auto& curr_point = dataunordered_set[indices[index]].getFeatures(); 
 
+        for (uint32_t i = 0; i < n; i++) {
 
-    	if(n < 8) {
-
-            for (uint32_t i = 0; i < n; i++) {
-
-                if((
-                    Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
-				                               curr_point, 
-				                               number_of_features))
-                    <= epsilon)) {
-                        neighbours.insert(vals[i]);
-
-                }
-
-            }
-
-        }
-        else {
-
-            //#pragma omp parallel for schedule(dynamic, 32) reduction(merge_set:neighbours)
-            for (uint32_t i = 0; i < n - 8; i = i + 8) {
-
-                if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
-				                               curr_point, number_of_features))
-	            <= epsilon) {
-	            neighbours.insert(vals[i]);
-
-	        }
-
-	        if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 1]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 1]);
-
-                }
-
-	        if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 2]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 2]);
-
-                }
-
-	        if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 3]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 3]);
-
-                }
-
-	        if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 4]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 4]);
-
-                }
-
-                if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 5]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 5]);
-
-                }
-
-                if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 6]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 6]);
-
-                }
-
-                if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i + 7]].getFeatures(), 
-				                               curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i + 7]);
-
-                }
+	    if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
+	                                                      curr_point, number_of_features))
+	                <= epsilon) {
+	                neighbours.insert(vals[i]);
 
 	    }
-	    /*dont have to take care of this in case of variable vector length */
-	    uint32_t i = n - (n % 8);
 
-	    for (; i < n; i++) {
-
-                if(Util::asuint32(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), curr_point, number_of_features))
-                    <= epsilon) {
-                    neighbours.insert(vals[i]);
-
-                }
-
-            }
-
-        }
+	}
 
     }
 
@@ -387,8 +304,6 @@ int main(int argc, char** argv) {
     
     uint32_t epsilon_hex = Util::asuint32(epsilon_square);
     
-    std::unordered_map<uint32_t, std::vector<uint32_t>> core_points;
-    
     std::vector<uint32_t> cluster_info(n, 0);
     
     std::cout << "Evaluating core points "<<std::endl;     
@@ -437,7 +352,6 @@ int main(int argc, char** argv) {
 				        vals_set.insert(p);
 
 				}
-                                //vals_set.insert(points.begin(), points.end());
 
 			    }
 
@@ -474,7 +388,10 @@ int main(int argc, char** argv) {
 
 	    if(cluster.size() >= min_points) {
 
-		core_points[++num_clusters] = cluster;
+		num_clusters++;;
+		for(auto& point:cluster)
+		    dataset[point].setClusterInfo(num_clusters);
+
 		
 		std::cout<<"cluster "<<num_clusters<<" has "<<cluster.size()<<" points"<<std::endl;
 
@@ -487,24 +404,6 @@ int main(int argc, char** argv) {
     end_time = omp_get_wtime();
 
     std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
-
-    std::cout << "Assigning clusters " << std::endl;
-
-    start_time = omp_get_wtime();
-    
-    for(auto& points_in_cluster:core_points) {
-
-	    for(auto p:points_in_cluster.second) {
-
-                cluster_info[p] = points_in_cluster.first; 
-
-            }
-    }
-
-    end_time = omp_get_wtime();
-
-    std::cout << "Time to assign clusters " << (end_time - start_time) <<"s"<< std::endl;
-
     std::cout << " Clustering completed " << std::endl;
     std::cout <<" Number of clusters : "<<num_clusters<<std::endl;
     std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
@@ -512,7 +411,7 @@ int main(int argc, char** argv) {
 
     start_time = omp_get_wtime();
     
-    Util::writeToCSVfile(input, cluster_info, output_filename);
+    Util::writeToCSVfile(dataset, output_filename);
 
     end_time = omp_get_wtime();
 
