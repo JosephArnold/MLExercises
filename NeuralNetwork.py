@@ -3,15 +3,17 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
-
+import matplotlib.pyplot as plt
+import csv
 
 # load the dataset, split into input (X) and output (y) variables
 dataset = np.loadtxt('pima-indians-diabetes.csv', delimiter=',')
 #load only from column 0 to column 8
-X = dataset[:,0:8]
+
+X = dataset[0:614,0:8]
 
 #load column 8 which is the output vector
-y = dataset[:,8]
+y = dataset[0:614,8]
 
 X = torch.tensor(X, dtype=torch.float32)
 y = torch.tensor(y, dtype=torch.float32).reshape(-1, 1)
@@ -61,22 +63,44 @@ loss_fn = nn.BCELoss()  # binary cross entropy
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 #optimizer = optim.SGD(model.parameters(), lr=0.001)
 
-n_epochs = 200
+n_epochs = 100
 batch_size = 10
+loss_every_epoch = []
 
 for epoch in range(n_epochs):
+    loss_in_current_epoch = 9999.0
     for i in range(0, len(X), batch_size):
         Xbatch = X[i:i+batch_size]
         ybatch = y[i:i+batch_size]
         y_pred = model(Xbatch)
         optimizer.zero_grad()
         loss = loss_fn(y_pred, ybatch)
+        if(loss < loss_in_current_epoch):
+            loss_in_current_epoch = loss.item()
+
         loss.backward()
         optimizer.step()
-
+    loss_every_epoch.append(loss_in_current_epoch)
     print(f'Finished epoch {epoch}, latest loss {loss}')
-    
+
+xs = range(0, len(loss_every_epoch))
+
+plt.plot(np.array(xs), np.array(loss_every_epoch))
+plt.show()
+# Make sure to close the plt object once done
+plt.close()
+
+with open('NeuralNetwork.csv','w') as f:
+        writer = csv.writer(f)
+
+        for key in loss_every_epoch:
+            writer.writerow([key])
+
 # compute accuracy (no_grad is optional)
+X_test =  dataset[615:768,0:8]
+Y_test =  dataset[615:768, 8]
+X_test = torch.tensor(X_test, dtype=torch.float32)
+Y_test = torch.tensor(Y_test, dtype=torch.float32).reshape(-1, 1)
 
 with torch.no_grad():
 
@@ -84,8 +108,18 @@ with torch.no_grad():
     accuracy = (y_pred.round() == y).float().mean()
     print(f"Accuracy {accuracy}")
 
+    y_pred_test = model(X_test)
+    y_pred = model(X)
+
+accuracy = (y_pred_test.round() == Y_test).float().mean()
+print(f"Accuracy on test set {accuracy}")
+
+accuracy = (y_pred.round() == y).float().mean()
+print(f"Accuracy on training set {accuracy}")
+
 # make class predictions with the model
 predictions = (model(X) > 0.5).int()
+
 for i in range(5):
     print('%s => %d (expected %d)' % (X[i].tolist(), predictions[i], y[i]))
 

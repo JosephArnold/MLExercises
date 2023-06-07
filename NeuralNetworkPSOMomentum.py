@@ -6,9 +6,10 @@ import random
 import matplotlib.pyplot as plt
 import csv
 
+
 # load the dataset, split into input (X) and output (y) variables
 dataset = np.loadtxt('pima-indians-diabetes.csv', delimiter=',')
-#load only from column 0 to column 8
+
 X = dataset[0:614,0:8]
 
 #load column 8 which is the output vector
@@ -34,31 +35,13 @@ model = nn.Sequential(
 
 print(model)
 
-class PimaClassifier(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.hidden1 = nn.Linear(8, 12)
-        self.act1 = nn.ReLU()
-        self.hidden2 = nn.Linear(12, 8)
-        self.act2 = nn.ReLU()
-        self.output = nn.Linear(8, 1)
-        self.act_output = nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.act1(self.hidden1(x))
-        x = self.act2(self.hidden2(x))
-        x = self.act_output(self.output(x))
-        return x
-
-#model = PimaClassifier()
-#print(model)
 n_epochs = 100
 batch_size = 16
 n_input_layer = 8
 n_layer1 = 12
 n_layer2 = 8
 n_output_layer = 1
-num_of_particles = 200
+num_of_particles = 100
 dimensions = 221
 
 loss_fn = nn.BCELoss()  # binary cross entropy
@@ -74,8 +57,9 @@ loss_fn = nn.BCELoss()  # binary cross entropy
 #Each particle will have the following number of dimensions = (12 * 8) + (8 * 12) + (1 * 8) + 12 + 8 + 1 = 221
 
 #initialize particle's positions and initial velocity 'vt' randomly
-particle_positions = torch.rand(num_of_particles, dimensions) * 0.01
-vt =  torch.rand(num_of_particles, dimensions) * 10
+particle_positions = torch.rand(num_of_particles, dimensions) * 0.001
+vt =  torch.rand(num_of_particles, dimensions) 
+vt_1 =  torch.rand(num_of_particles, dimensions)
 vt_next = torch.rand(num_of_particles, dimensions)
 
 #initialize global and particle best positions
@@ -85,25 +69,22 @@ global_best_error =  9999.0
 particle_best_error = torch.full((num_of_particles, 1), 9999.0)
 
 #initialize scalar values of inertia weight 'w', cognitive weight 'c1', global weight 'c2' and random factors 'r1' and 'r2'
-#w = random.uniform(0.6, 0.9)
-lamda = 0.9
-weight_decr_step = (0.9 - 0.8) / n_epochs
-c1 = 1.4845
-c2 = 1.4845
-#c2 = random.uniform(0, 1)
+w = 0.9
+lamda = 0.8
+weight_decr_step = (0.9 - 0.4) / ((len(X) / batch_size) * n_epochs)
+c1 = 1.9
+c2 = 1.845
 loss_every_epoch = []
 
 print(X.shape[0])
 for epoch in range(n_epochs):
-    best_in_current_epoch = 9999.0
+    best_in_current_epoch = 9999
     for i in range(0, len(X), batch_size):
         Xbatch = X[i:i+batch_size]
         ybatch = y[i:i+batch_size]
 
-
         r1 = random.uniform(0, 1)
         r2 = random.uniform(0, 1)
-        w =  random.uniform(0.5, 0.8)
         #run forward prop for each particle
         for j in range(0, num_of_particles): 
             
@@ -135,13 +116,9 @@ for epoch in range(n_epochs):
         #    2. Update velocity
         #       v(t+1) = (w * v(t)) + (c1 * r1 * (p(t) – x(t)) + (c2 * r2 * (g(t) – x(t))
         #    3. Update position
-
-            
-            #print("velocity of particles before ")
-            #print(vt)
-
             if(loss < best_in_current_epoch):
                 best_in_current_epoch = loss.item()
+
             if(loss < particle_best_error[j]):
                 particle_best_error[j] = loss
                 particle_best_positions[j] = curr_weight
@@ -149,16 +126,23 @@ for epoch in range(n_epochs):
                 global_best_error = loss
                 global_best_position = curr_weight
             
-            #vt_next[j] = (w * vt[j] + ((c1 * r1 * (particle_best_positions[j] - curr_weight)) + (c2 * r2 * (global_best_position - curr_weight)))) * (1 - lamda) + lamda * vt[j]
-            vt_next[j] = (w * vt[j] + ((c1 * r1 * (particle_best_positions[j] - curr_weight)) + (c2 * r2 * (global_best_position - curr_weight)))) 
-            particle_positions[j] = torch.add(particle_positions[j] , vt_next[j])      
+            vt_next[j] = (1.0 - lamda) * (vt[j] + (c1 * r1 * (particle_best_positions[j] - curr_weight)) + (c2 * r2 * (global_best_position - curr_weight))) + lamda * vt_1[j]
+           
+            particle_positions[j] = particle_positions[j] + vt_next[j]      
 
+            vt_1[j] = vt[j]
             vt[j] = vt_next[j]
             
-
-    #w -= weight_decr_step
+        #print(model[0].weight.shape)
+        #print(model[0].bias.shape)
+        #print(model[2].weight.shape)
+        #print(model[2].bias.shape)
+        #print(model[4].weight.shape)
+        #print(model[4].bias.shape)
+        #print(f' latest loss {loss}')
+        #exit()
     loss_every_epoch = loss_every_epoch + [best_in_current_epoch]
-    print(f'Finished epoch {epoch}, latest loss {global_best_error} lowest loss this epoch {best_in_current_epoch}')
+    print(f'Finished epoch {epoch}, latest loss {global_best_error}')
 
 xs = range(0, len(loss_every_epoch))
 
@@ -167,13 +151,11 @@ plt.show()
 # Make sure to close the plt object once done
 plt.close()
 
-with open('PSO.csv','w') as f:
+with open('PSOMomentum1.csv','w') as f:
         writer = csv.writer(f)
 
         for key in loss_every_epoch:
             writer.writerow([key])
-
-print("Model training done. Checking for accuracy on test set")
 
 X_test =  dataset[615:768,0:8]
 Y_test =  dataset[615:768, 8]
@@ -206,7 +188,6 @@ print(f"Accuracy on test set {accuracy}")
 
 accuracy = (y_pred.round() == y).float().mean()
 print(f"Accuracy on training set {accuracy}")
-
 
 # make class predictions with the model
 predictions = (model(X) > 0.5).int()
