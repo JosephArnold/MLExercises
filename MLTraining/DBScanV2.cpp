@@ -166,13 +166,16 @@ int main(int argc, char** argv) {
     int32_t* indices_of_points;
     std::vector<DATA_TYPE> data_points;
     std::vector<DATA_TYPE> data_points_per_process;
+    std::vector<Data<DATA_TYPE>> original_dataset;
     std::vector<Data<DATA_TYPE>> dataset;
+    uint64_t num_of_points_distributed = 0;
     std::map<uint64_t, uint64_t> cell_size;
     std::map<uint64_t, std::set<uint64_t>> spatial_index;
     std::unordered_map<uint64_t, std::set<uint64_t>> neighbour_keys;
     std::vector<int32_t> original_indices;
-
+    std::vector<int32_t> count_points_per_process;
     std::vector<int32_t> count_of_clusters_per_process;
+    std::vector<int32_t> displacements_of_dataPoints;
     std::vector<DATA_TYPE> mins;
     std::vector<DATA_TYPE> maxs;
     std::vector<DATA_TYPE> dimensions;
@@ -346,6 +349,9 @@ int main(int argc, char** argv) {
 
 	uint32_t points_per_procs = n / num_of_procs;
 
+	if(points_per_procs == 0)
+	    points_per_procs = 1;
+
     	std::map<uint32_t, std::set<uint32_t>> points_procs;
 
     	uint32_t proc_count = 0;
@@ -357,9 +363,9 @@ int main(int argc, char** argv) {
 
 	displacements =  new int32_t[num_of_procs];
 
-	std::vector<int32_t> displacements_of_dataPoints(num_of_procs);
+	displacements_of_dataPoints.resize(num_of_procs);
 
-	std::vector<int32_t> count_points_per_process;
+	//std::vector<int32_t> count_points_per_process;
 
 	displacements_of_dataPoints[0] = 0;
 
@@ -408,7 +414,6 @@ int main(int argc, char** argv) {
 
 	    }
         
-
         }
 
 	/*compute number of points allocated per process
@@ -421,6 +426,8 @@ int main(int argc, char** argv) {
             total_points += p.second.size();
 
 	    num_of_points_to_cluster[p.first] = p.second.size();
+
+	    num_of_points_distributed += p.second.size();
 
 	    count_points_per_process.push_back(p.second.size() * number_of_features);
 
@@ -443,16 +450,13 @@ int main(int argc, char** argv) {
 
                 indices_of_points[i] = pt;
 
-		std::cout << "Point is "<<pt<<std::endl;
+		//std::cout << "Point is "<<pt<<std::endl;
 		/*copy the data point */
-		for(auto& feature:dataset[pt].getFeatures()) {
+		for(auto feature:dataset[pt].getFeatures()) {
 
 		    data_points.push_back(feature);
- 		    std::cout << " "<<feature<<" ";
 
 		}
-
-		std::cout <<std::endl;
 
 	        i++;
 
@@ -460,17 +464,11 @@ int main(int argc, char** argv) {
 
         }
 
-	original_indices.resize(num_of_points_to_cluster[rank]);
-
-	data_points_per_process.resize(num_of_points_to_cluster[rank] * number_of_features);
-
-	MPI_Scatterv(indices_of_points, num_of_points_to_cluster, displacements, MPI_INT, original_indices.data(),
-                     num_of_points_to_cluster[rank], MPI_INT, 0, MPI_COMM_WORLD);
-
-	MPI_Scatterv(data_points.data(), count_points_per_process.data() , displacements_of_dataPoints.data(), MPI_FLOAT, data_points_per_process.data(),
-                     num_of_points_to_cluster[rank] * number_of_features, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	original_dataset = dataset;
 
 	dataset.clear();
+
+	spatial_index.clear();
 
 
     }
@@ -481,17 +479,15 @@ int main(int argc, char** argv) {
 
     MPI_Scatter(num_of_points_to_cluster, 1, MPI_INT, &n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    if(rank != 0) {
+    original_indices.resize(n);
 
-	original_indices.resize(n);
+    data_points_per_process.resize(n * number_of_features);
 
-	data_points_per_process.resize(n * number_of_features);
+    MPI_Scatterv(indices_of_points, num_of_points_to_cluster, displacements, MPI_INT, original_indices.data(),
+                  n, MPI_INT, 0, MPI_COMM_WORLD);
 
-        MPI_Scatterv(nullptr, nullptr, nullptr, MPI_INT, original_indices.data(), n, MPI_INT, 0, MPI_COMM_WORLD);
-
-        MPI_Scatterv(nullptr, nullptr, nullptr, MPI_FLOAT, data_points_per_process.data(), n * number_of_features, MPI_FLOAT, 0, MPI_COMM_WORLD);
-
-    }
+    MPI_Scatterv(data_points.data(), count_points_per_process.data() , displacements_of_dataPoints.data(), MPI_FLOAT, data_points_per_process.data(),
+                   n * number_of_features, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
     /*copy the points alloted to the process of rank 'p' to dataset */
     int32_t k = 0;
@@ -516,18 +512,6 @@ int main(int argc, char** argv) {
 	k++;
 
     }
-
-    for(auto& p:dataset) {
-
-	#if 0
-        for(auto& coordinate:p.getFeatures())
-	        std::cout <<coordinate<< " ";
-	}
-	#endif
-	std::cout <<p.getIndex()<<" in rank "<<rank<<std::endl;
-
-    }
-
 
     /*Compute spatial index, neighbouring keys for all the points assigned to processes other than root.
       They are already computed for the root process */
@@ -615,7 +599,7 @@ int main(int argc, char** argv) {
 
     uint64_t noise_points = 0;
 
-    std::map<uint64_t, std::vector<uint64_t>> clusters;;
+    std::map<uint64_t, std::vector<uint64_t>> clusters;
 
     for (uint64_t i = 0; i < n; i++) {
 
@@ -695,20 +679,12 @@ int main(int argc, char** argv) {
 	    }
 
 	    num_clusters++;	    
-	    
-	    std::cout<<"cluster "<<num_clusters<<" in rank "<<rank<<" has "<<cluster.size()<<" points"<<std::endl;
-
-	    //std::cout<<"Points are: "<<std::endl;
-	
-    	    for(auto& point:cluster) {
+    	    
+	    for(auto& point:cluster) {
 
 	        clusters[num_clusters].push_back(dataset[point].getIndex());
-		
-		//std::cout<<dataset[point].getIndex()<<" "<<std::endl;
 
 	    }
-
-	    //std::cout<<std::endl;
 
 	}
 
@@ -718,7 +694,8 @@ int main(int argc, char** argv) {
 
     /*Local Cluster computation done. Prepare to send the points to root process */
     std::vector<uint32_t> cluster_lengths;
-    std::vector<uint32_t> cluster_points(n);
+
+    std::vector<uint32_t> cluster_points;
 
     for(auto& cluster:clusters) {
 
@@ -742,14 +719,11 @@ int main(int argc, char** argv) {
     MPI_Gather(&num_clusters, 1, MPI_INT, count_of_clusters_per_process.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     std::vector<int32_t> displacements_cluster_len(num_of_procs);
+    
     if(rank == 0) {
 
 	/*stores the length of each of the clusters */
 	all_cluster_lens.resize(std::reduce(count_of_clusters_per_process.begin(), count_of_clusters_per_process.end()));
-
-	std::cout << "all_cluster_lens size is " << all_cluster_lens.size() << std::endl;
-
-	//std::vector<int32_t> displacements(num_of_procs);
 
 	displacements_cluster_len[0] = 0;
 
@@ -759,46 +733,123 @@ int main(int argc, char** argv) {
         
 	}
 
-        /*Now get length of each cluster */
-        for(auto& i:displacements_cluster_len) {
-
-	    std::cout << "Displacements " << i << std::endl;
-
-
-	}
-
     }
     
     MPI_Gatherv(cluster_lengths.data(), num_clusters, MPI_INT,
                 all_cluster_lens.data(), count_of_clusters_per_process.data(), displacements_cluster_len.data(), MPI_INT,
                 0, MPI_COMM_WORLD);
 
+    /*Now we have the lenght of each of the clusters from each process 
+     *
+     * Let us now collect the points that have been clustered */
+     std::vector<int32_t> indices_of_all_points;
+    
     if(rank == 0) {
 
-        for(auto& i:all_cluster_lens) {
+	/*each child process will send number_of_clusters * size of each cluster */
+	for(uint32_t i = 1; i < num_of_procs;i ++) {
 
-            std::cout << "Length of cluster " << i << std::endl;
+	      displacements_cluster_len[i] = displacements_cluster_len[i-1] + num_of_points_to_cluster[i - 1];
 
 
-        }
+	}
+
+	indices_of_all_points.resize(num_of_points_distributed);
 
     }
 
+    MPI_Gatherv(cluster_points.data(), n, MPI_INT,
+                indices_of_all_points.data(), num_of_points_to_cluster, displacements_cluster_len.data(), MPI_INT,
+                0, MPI_COMM_WORLD);
 
-    std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
-    std::cout << " Clustering completed " << std::endl;
-    std::cout <<" Number of clusters : "<<num_clusters<<std::endl;
-    std::cout <<" Number of noise points : "<<noise_points<<std::endl;
-    std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
-    std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
+    if(rank == 0) {
 
-    start_time = omp_get_wtime();
-    
-    //Util::writeToCSVfile(dataset, output_filename);
+        std::cout << "Clustering completed " <<std::endl;
 
-    end_time = omp_get_wtime();
+	uint32_t i = 0;
 
-    //std::cout << "Time to write output to file " << (end_time - start_time) <<"s"<< std::endl;
+	uint32_t cluster_count = 0;
+
+	std::map<uint32_t, std::set<uint32_t>> clusters;
+
+        while(i < indices_of_all_points.size()) {
+        
+	    for(uint32_t k = 0; k < all_cluster_lens[cluster_count]; k++) {
+
+                clusters[cluster_count].insert(indices_of_all_points[i + k]);
+
+	    }
+
+	    i += all_cluster_lens[cluster_count];
+
+	    cluster_count++;
+
+        }
+
+	for(auto it = clusters.begin(); it != clusters.end(); it++) {
+
+	    for(auto jt = std::next(it); jt != clusters.end();) {
+
+	        std::set<uint32_t> intersect;
+	    
+		set_intersection((*it).second.begin(), (*it).second.end(), (*jt).second.begin(), (*jt).second.end(),
+                 	     std::inserter(intersect, intersect.begin()));
+
+		if(intersect.size() > 0) {
+
+		    (*it).second.insert((*jt).second.begin(), (*jt).second.end());
+
+		     jt = clusters.erase(jt);
+
+		}
+		else {
+
+		    ++jt;
+
+		}
+
+	     }
+
+	}
+
+        cluster_count = 0;
+	for(auto& p: clusters) {
+
+	    if(p.second.size() >= min_points) {
+
+		cluster_count++;
+
+	        for(auto& pt:p.second) {
+
+		    original_dataset[pt].setClusterInfo(cluster_count);
+
+		}
+
+	    }
+	    else {
+
+	        noise_points += p.second.size();
+
+	    }
+
+        }
+
+	std::cout << "Merging of clusters completed " << std::endl;
+        std::cout <<" Number of clusters : "<< cluster_count <<std::endl;
+	std::cout <<" Number of noise points : "<< noise_points << std::endl;
+
+	std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
+        std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
+
+        start_time = omp_get_wtime();
+
+        Util::writeToCSVfile(original_dataset, output_filename);
+
+        end_time = omp_get_wtime();
+
+        std::cout << "Time to write output to file " << (end_time - start_time) <<"s"<< std::endl;
+
+    }
 
     MPI_Finalize();
 
