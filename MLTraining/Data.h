@@ -7,6 +7,8 @@ class Data
 {
 public:
 	std::vector<T> features;
+
+	std::vector<uint32_t> neighbours;
 	
 	/*No cluster information initially*/
 	int32_t cluster_info = 0;
@@ -16,6 +18,10 @@ public:
 
 	/*stores the cell to which the point belongs */
 	uint32_t cell_num = 0;
+
+	/*stores the index of the point */
+        uint32_t index = 0;
+
 
 	Data(std::vector<T>& features_vector) {
 		features = features_vector;
@@ -38,9 +44,18 @@ public:
                 cell_num = value;
         }
 
+        int32_t getIndex() {
+                return index;
+        }
+
+	void setIndex(uint32_t value) {
+                index = value;
+        }
+
         int32_t getCellNumber() {
                 return cell_num;
         }
+
 
 
 	bool isVisited() {
