@@ -155,7 +155,6 @@ int main(int argc, char** argv) {
     DATA_TYPE epsilon = 0.0;
     uint64_t number_of_features = 0;
     uint64_t n = 0;
-    uint64_t total_num_of_neighbours = 0;
     std::string input_filename = "";
     std::string output_filename = "";
     double start_time, end_time;
@@ -182,7 +181,7 @@ int main(int argc, char** argv) {
     std::map<uint64_t,std::pair<uint64_t, uint64_t>> m_cell_index;
     uint64_t total_cells = 1;
 
-    std::vector<uint32_t> all_cluster_lens;
+    std::vector<uint64_t> all_cluster_lens;
     MPI_Init(&argc, &argv);
 
     int32_t rank, num_of_procs;
@@ -407,8 +406,8 @@ int main(int argc, char** argv) {
 	}
 
 	/*compute number of points allocated per process
-	 * Compute displacements
 	 */
+	
 	uint64_t i = 0;
 
         for(auto&p : points_procs) {
@@ -584,15 +583,17 @@ int main(int argc, char** argv) {
 
     epsilon_square = epsilon * epsilon;
     
-//    start_time = omp_get_wtime(); 
-
     uint64_t num_clusters = 0;
-
-    uint64_t noise_points = 0;
 
     std::map<uint64_t, std::vector<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
+
+    if(rank == 0) {
+
+        start_time = omp_get_wtime();
+
+    }
 
     for (uint64_t i = 0; i < n; i++) {
 
@@ -610,9 +611,6 @@ int main(int argc, char** argv) {
 
 		std::set<uint64_t> vals_set;
 
-		//if(num_clusters == 648)
-		//	std::cout << "indices size is "<<indices.size()<<std::endl;
-		
 		const uint64_t indices_size = indices.size();
 		
 		//#pragma omp parallel for reduction(merge_set:vals_set)
@@ -678,14 +676,9 @@ int main(int argc, char** argv) {
 
 		num_clusters++;
 
-	        for(auto& point:cluster) {
-
-	            clusters[num_clusters] = cluster;
-
-	        }
+	        clusters[num_clusters] = cluster;
 
 		num_of_points_clustered += clusters[num_clusters].size();
-		//std::cout << "Cluster "<<num_clusters<<" computed in "<<rank<<" and size of cluster is "<<clusters[num_clusters].size()<<std::endl;
 
 	    }
 	
@@ -693,14 +686,18 @@ int main(int argc, char** argv) {
 
     }
     
-    std::cout << "Completed clustering in process "<<rank<<std::endl;
+    if(rank == 0) {
+        
+        end_time = omp_get_wtime();
 
-    end_time = omp_get_wtime();
+	std::cout << "Time taken to cluster " << (end_time - start_time) <<"s"<< std::endl;
+
+    }
 
     /*Local Cluster computation done. Prepare to send the points to root process */
-    std::vector<uint32_t> cluster_lengths;
+    std::vector<uint64_t> cluster_lengths;
 
-    std::vector<uint32_t> cluster_points;
+    std::vector<uint64_t> cluster_points;
 
     for(auto& cluster:clusters) {
 
@@ -742,59 +739,40 @@ int main(int argc, char** argv) {
 
     }
     
-    MPI_Gatherv(cluster_lengths.data(), num_clusters, MPI_INT,
-                all_cluster_lens.data(), count_of_clusters_per_process.data(), displacements_cluster_len.data(), MPI_INT,
+    MPI_Gatherv(cluster_lengths.data(), num_clusters, MPI_LONG,
+                all_cluster_lens.data(), count_of_clusters_per_process.data(), displacements_cluster_len.data(), MPI_LONG,
                 0, MPI_COMM_WORLD);
 
     /*Now we have the lenght of each of the clusters from each process 
      *
      * Let us now collect the points that have been clustered */
-     std::vector<int32_t> indices_of_all_points;
+     std::vector<uint64_t> indices_of_all_points;
     
     if(rank == 0) {
 
-	uint32_t count = 0;
-
-	std::cout << "Computing number of points to be received from each sub process " <<std::endl;
-
-#if 0
-	/*each child process will send number_of_clusters * size of each cluster */
-	for(uint32_t i = 0; i < num_of_procs;i++) {
-
-	    for(uint32_t j = 0; j < count_of_clusters_per_process[i]; j++) {
-
-	        num_of_points_to_cluster[i] += cluster_lengths[count++]; //get the lengths only till the number of clusters for that process
-
-	    }
-
-	}
-#endif
 	for(uint32_t i = 1; i < num_of_procs;i ++) {
 
-	    
 	      displacements_cluster_len[i] = displacements_cluster_len[i-1] + num_of_points_to_cluster[i - 1];
 
 
 	}
 
-	 for(uint32_t i = 0; i < num_of_procs;i ++) 
+	num_of_points_distributed = 0;
+	
+	for(uint32_t i = 0; i < num_of_procs;i ++) 
              num_of_points_distributed += num_of_points_to_cluster[i];
 
-	indices_of_all_points.resize(num_of_points_distributed);
+	indices_of_all_points.resize(num_of_points_distributed, 0);
 
-	noise_points = original_dataset.size() - num_of_points_distributed;
-
-	std::cout << "Computing number of points to be received from each sub process completed " <<std::endl;
+	std::cout << "Received " <<num_of_points_distributed<<" from all sub processes"<<std::endl;
 
     }
 
-    MPI_Gatherv(cluster_points.data(), num_of_points_clustered, MPI_INT,
-                indices_of_all_points.data(), num_of_points_to_cluster, displacements_cluster_len.data(), MPI_INT,
+    MPI_Gatherv(cluster_points.data(), num_of_points_clustered, MPI_LONG,
+                indices_of_all_points.data(), num_of_points_to_cluster, displacements_cluster_len.data(), MPI_LONG,
                 0, MPI_COMM_WORLD);
 
     if(rank == 0) {
-
-        std::cout << "Clustering completed " <<std::endl;
 
 	uint32_t i = 0;
 
@@ -803,11 +781,11 @@ int main(int argc, char** argv) {
 	std::cout << "Storing received clusters in map " <<std::endl;
 
 	start_time = omp_get_wtime();
-	std::map<uint32_t, std::set<uint32_t>> clusters;
+	std::map<uint32_t, std::set<uint64_t>> clusters;
 
         while(i < indices_of_all_points.size()) {
 
-	    for(uint32_t k = 0; k < all_cluster_lens[cluster_count]; k++) { //k will index till each cluster length
+	    for(uint64_t k = 0; k < all_cluster_lens[cluster_count]; k++) { //k will index till each cluster length
 
                 clusters[cluster_count].insert(indices_of_all_points[i + k]);
 
@@ -821,7 +799,7 @@ int main(int argc, char** argv) {
 
 	end_time = omp_get_wtime();
 
-	 std::cout << "Time taken to store clusters in map " << (end_time - start_time) <<"s"<< std::endl;
+	std::cout << "Time taken to store clusters in map " << (end_time - start_time) <<"s"<< std::endl;
 
 	std::cout << "Merging of clusters started " << std::endl;
 	
@@ -859,29 +837,26 @@ int main(int argc, char** argv) {
 
         std::cout << "Time taken to merge clusters " << (end_time - start_time) <<"s"<< std::endl;
 
-
         cluster_count = 1;
 
-	std::cout <<"Size of original dataset:"<< original_dataset.size() <<std::endl;
+	uint64_t non_noise_points = 0;
 
 	for(auto& p: clusters) {
 
 	    for(auto& pt:p.second) {
 
-		if(pt >= original_dataset.size() || pt < 0) {
-		     std::cout <<"--------------------------------------SOMETHING WRONG :"<< pt <<std::endl;
-		}
-		else
-	            original_dataset[pt].setClusterInfo(cluster_count);
+	        original_dataset[pt].setClusterInfo(cluster_count);
 
 	    }
 
 	    cluster_count++;
 
+	    non_noise_points += p.second.size();
+
 	}
 
-        std::cout <<" Number of clusters : "<< (cluster_count - 1) <<std::endl;
-	std::cout <<" Number of noise points : "<< noise_points << std::endl;
+        std::cout <<" Number of clusters : "<<clusters.size() <<std::endl;
+	std::cout <<" Number of noise points : "<< (original_dataset.size() - non_noise_points) << std::endl;
 
 	std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
         std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
