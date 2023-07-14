@@ -363,45 +363,39 @@ int main(int argc, char** argv) {
 	displacements[0] = 0;
 
 	uint64_t total_points = 0;
+
+	std::set<uint32_t> neighbours;
     	
-	for(auto key : spatial_index) {
-
-	    std::vector<uint64_t> neighbouring_keys = neighbour_keys[key.first];
-
-	    std::set<uint64_t> neighbouring_points;
-
-	    for(auto& pt : neighbouring_keys) {
-
-                    neighbouring_points.insert(spatial_index[pt].begin(), spatial_index[pt].end());
-
-            }
-
-//	    if(neighbouring_points.size() >= min_points) {
- 
-	    	/*if the points are being assigned to the last process, assign all the remaining points to that process */
-	    	if(proc_count == num_of_procs - 1) {
-
-                    points_procs[proc_count].insert(neighbouring_points.begin(), neighbouring_points.end());
+	for(auto k : spatial_index) {
 
 
-	        }		    
-	        else if(points_procs[proc_count].size() < points_per_procs) {
+	 /*if the points are being assigned to the last process, assign all the remaining points to that process */
+	    if(proc_count == num_of_procs - 1) {
 
-                /*all neighbours of the current point assigned to the same process */
-		/*neighbours keys will also contain the current key */ 
-                    points_procs[proc_count].insert(neighbouring_points.begin(), neighbouring_points.end());
+                points_procs[proc_count].insert(k.second.begin(), k.second.end());
 
-	        }
-	        else {
+	    }		    
+	    else if(points_procs[proc_count].size() < points_per_procs) {
+
+	        std::vector<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
+
+	        for(auto& pt : neighbouring_keys) {
+
+                    neighbours.insert(spatial_index[pt].begin(), spatial_index[pt].end());
+
+                }
+
+                points_procs[proc_count].insert(k.second.begin(), k.second.end());
+	    }
+	    else {
 	    
-		    proc_count++; //assign to the next process
+	        points_procs[proc_count].insert(neighbours.begin(), neighbours.end()); //insert neighbours for points already added to the same process before assigning to the next process
 
-                    points_procs[proc_count].insert(neighbouring_points.begin(), neighbouring_points.end());
+	        neighbours.clear();
 
+		proc_count++;
 
-	        }
-        
-//            }
+	    }
 
 	}
 
@@ -484,13 +478,13 @@ int main(int argc, char** argv) {
                    n * number_of_features, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
     /*copy the points alloted to the process of rank 'p' to dataset */
-    int32_t k = 0;
+    int64_t k = 0;
 
-    for(int32_t i = 0; i <  data_points_per_process.size(); i = i + number_of_features) {
+    for(int64_t i = 0; i <  data_points_per_process.size(); i = i + number_of_features) {
 
 	std::vector<DATA_TYPE> point;
 
-	for(int32_t j = 0; j < number_of_features; j++) {
+	for(int64_t j = 0; j < number_of_features; j++) {
 
 	    point.push_back(data_points_per_process[i + j]);
 
@@ -571,15 +565,12 @@ int main(int argc, char** argv) {
     m_cell_index[total_cells].second = 0;
 
     /*compute neighbouring cells */
-    std::cout << "Computing neighbouring points started in process "<<rank<<std::endl;
     for(auto& cell : spatial_index) {
 
         neighbour_keys[cell.first] = compute_neighbouring_keys(cell.first, m_swapped_dimensions,
                                                                dimensions, m_cell_index, number_of_features);
 
     }
-
-    std::cout << "Computing neighbouring points completed in process "<<rank<<std::endl;
 
     epsilon_square = epsilon * epsilon;
     
@@ -652,8 +643,6 @@ int main(int argc, char** argv) {
 		
 		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
                
-		//std::vector<uint64_t> neighbours_v(neighbours.begin(), neighbours.end());
-	        
 		indices.clear();
 
 		//#pragma omp parallel for
@@ -686,14 +675,6 @@ int main(int argc, char** argv) {
 
     }
     
-    if(rank == 0) {
-        
-        end_time = omp_get_wtime();
-
-	std::cout << "Time taken to cluster " << (end_time - start_time) <<"s"<< std::endl;
-
-    }
-
     /*Local Cluster computation done. Prepare to send the points to root process */
     std::vector<uint64_t> cluster_lengths;
 
@@ -725,6 +706,10 @@ int main(int argc, char** argv) {
     std::vector<int32_t> displacements_cluster_len(num_of_procs);
     
     if(rank == 0) {
+
+	end_time = omp_get_wtime();
+
+        std::cout << "Time taken to cluster " << (end_time - start_time) <<"s"<< std::endl;
 
 	/*stores the length of each of the clusters */
 	all_cluster_lens.resize(std::reduce(count_of_clusters_per_process.begin(), count_of_clusters_per_process.end()));
