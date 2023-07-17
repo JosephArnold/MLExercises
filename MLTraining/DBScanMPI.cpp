@@ -145,6 +145,36 @@ static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,
 
 }
 
+static inline void mergeClustersWithCommonPoints( std::map<uint32_t, std::set<uint64_t>>& clusters) {
+
+    for(auto it = clusters.begin(); it != clusters.end(); it++) {
+
+        for(auto jt = std::next(it); jt != clusters.end();) {
+
+            std::set<uint32_t> intersect;
+
+            set_intersection((*it).second.begin(), (*it).second.end(), (*jt).second.begin(), (*jt).second.end(),
+                             std::inserter(intersect, intersect.begin()));
+
+            if(intersect.size() > 0) {
+
+                (*it).second.insert((*jt).second.begin(), (*jt).second.end());
+
+                jt = clusters.erase(jt);
+
+            }
+            else {
+
+                ++jt;
+
+            }
+
+        }
+
+    }
+
+}
+
 #pragma omp declare reduction (map_add : std::unordered_map<uint64_t,  std::vector<uint64_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
 //#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
@@ -794,31 +824,7 @@ int main(int argc, char** argv) {
 	
 	start_time = omp_get_wtime();
 
-	for(auto it = clusters.begin(); it != clusters.end(); it++) {
-
-	    for(auto jt = std::next(it); jt != clusters.end();) {
-
-	        std::set<uint32_t> intersect;
-	    
-		set_intersection((*it).second.begin(), (*it).second.end(), (*jt).second.begin(), (*jt).second.end(),
-                 	     std::inserter(intersect, intersect.begin()));
-
-		if(intersect.size() > 0) {
-
-		    (*it).second.insert((*jt).second.begin(), (*jt).second.end());
-
-		     jt = clusters.erase(jt);
-
-		}
-		else {
-
-		    ++jt;
-
-		}
-
-	     }
-
-        }
+	mergeClustersWithCommonPoints(clusters);
 
         std::cout << "Merging of clusters completed " << std::endl;
 
