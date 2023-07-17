@@ -368,6 +368,14 @@ int main(int argc, char** argv) {
     	
 	for(auto k : spatial_index) {
 
+	    std::vector<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
+
+            for(auto& pt : neighbouring_keys) {
+
+                neighbours.insert(spatial_index[pt].begin(), spatial_index[pt].end());
+
+            }
+
 
 	 /*if the points are being assigned to the last process, assign all the remaining points to that process */
 	    if(proc_count == num_of_procs - 1) {
@@ -377,15 +385,8 @@ int main(int argc, char** argv) {
 	    }		    
 	    else if(points_procs[proc_count].size() < points_per_procs) {
 
-	        std::vector<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
-
-	        for(auto& pt : neighbouring_keys) {
-
-                    neighbours.insert(spatial_index[pt].begin(), spatial_index[pt].end());
-
-                }
-
                 points_procs[proc_count].insert(k.second.begin(), k.second.end());
+	    
 	    }
 	    else {
 	    
@@ -395,10 +396,13 @@ int main(int argc, char** argv) {
 
 		proc_count++;
 
+                points_procs[proc_count].insert(k.second.begin(), k.second.end());
+
 	    }
 
 	}
 
+	 points_procs[proc_count].insert(neighbours.begin(), neighbours.end()); //insert neighbours of points in last process
 	/*compute number of points allocated per process
 	 */
 	
