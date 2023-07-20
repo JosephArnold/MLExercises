@@ -111,10 +111,10 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key
 
 }
 
-#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge_set : std::unordered_set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction (merge : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
+static inline std::unordered_set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
 				 std::vector<Data<T>>& dataunordered_set, 
 		                 const T& epsilon, const uint64_t& number_of_features, 
 				 std::vector<uint64_t>& vals) {
@@ -122,7 +122,7 @@ static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,
     const uint64_t n = vals.size();
     const uint64_t indices_size = indices.size();
 
-    std::set<uint64_t> neighbours;
+    std::unordered_set<uint64_t> neighbours;
     //#pragma omp parallel for schedule(dynamic, 32) private(neighboring_points) firstprivate(previous_cell) reduction(merge: rules)
     #pragma omp parallel for reduction(merge_set:neighbours)
     for(uint64_t index = 0; index < indices_size; index++) {
@@ -634,7 +634,7 @@ int main(int argc, char** argv) {
 
 	    while(!indices.empty()) {
 
-		std::set<uint64_t> vals_set;
+		std::unordered_set<uint64_t> vals_set;
 
 		const uint64_t indices_size = indices.size();
 		
@@ -675,7 +675,7 @@ int main(int argc, char** argv) {
                 
 		std::vector<uint64_t> vals(vals_set.begin(), vals_set.end());
 		
-		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
+		std::unordered_set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
                
 		indices.clear();
 
