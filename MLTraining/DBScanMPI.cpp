@@ -111,29 +111,32 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key
 
 }
 
-#pragma omp declare reduction (merge_set : std::unordered_set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction (merge : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline std::unordered_set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
-				 std::vector<Data<T>>& dataunordered_set, 
+static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
+				 std::vector<Data<T>>& dataset, 
 		                 const T& epsilon, const uint64_t& number_of_features, 
 				 std::vector<uint64_t>& vals) {
 
     const uint64_t n = vals.size();
     const uint64_t indices_size = indices.size();
 
-    std::unordered_set<uint64_t> neighbours;
+    std::set<uint64_t> neighbours;
     //#pragma omp parallel for schedule(dynamic, 32) private(neighboring_points) firstprivate(previous_cell) reduction(merge: rules)
     #pragma omp parallel for reduction(merge_set:neighbours)
     for(uint64_t index = 0; index < indices_size; index++) {
    
-	auto& curr_point = dataunordered_set[indices[index]].getFeatures(); 
+	auto& curr_point = dataset[indices[index]].getFeatures(); 
 
         for (uint64_t i = 0; i < n; i++) {
 
-	    if(Util::calculateEuclideanDist(dataunordered_set[vals[i]].getFeatures(), 
-	                                                      curr_point, number_of_features) <= epsilon) {
+	    if(!dataset[vals[i]].visited && (Util::calculateEuclideanDist(dataset[vals[i]].getFeatures(), 
+	                                                      curr_point, number_of_features) <= epsilon)) {
 	        neighbours.insert(vals[i]);
+
+                #pragma omp atomic write
+		dataset[vals[i]].visited = true;
 
 	    }
 
@@ -420,7 +423,7 @@ int main(int argc, char** argv) {
 	    }
 	    else {
 	    
-	        points_procs[proc_count].insert(neighbours.begin(), neighbours.end()); //insert neighbours for points already added to the same process before assigning to the next process
+	        points_procs[proc_count].insert(neighbours.begin(), neighbours.end()); //insert neighbours only for alternating points
 
 	        neighbours.clear();
 
@@ -630,13 +633,13 @@ int main(int argc, char** argv) {
 	    
 	    indices.push_back(i);
 
-	    uint64_t prev_key = INT_MAX;
-
 	    while(!indices.empty()) {
 
 		std::unordered_set<uint64_t> vals_set;
 
 		const uint64_t indices_size = indices.size();
+
+		uint64_t prev_key = INT_MAX;
 		
 		//#pragma omp parallel for reduction(merge_set:vals_set)
 		for(uint64_t index = 0; index < indices_size; index++) {
@@ -675,7 +678,7 @@ int main(int argc, char** argv) {
                 
 		std::vector<uint64_t> vals(vals_set.begin(), vals_set.end());
 		
-		std::unordered_set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
+		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
                
 		indices.clear();
 
@@ -695,16 +698,12 @@ int main(int argc, char** argv) {
 
 	    }
 
-	    if(cluster.size() >= min_points) {
+	    num_clusters++;
 
-		num_clusters++;
+	    clusters[num_clusters] = cluster;
 
-	        clusters[num_clusters] = cluster;
+ 	    num_of_points_clustered += clusters[num_clusters].size();
 
-		num_of_points_clustered += clusters[num_clusters].size();
-
-	    }
-	
 	}
 
     }
@@ -765,7 +764,7 @@ int main(int argc, char** argv) {
     /*Now we have the lenght of each of the clusters from each process 
      *
      * Let us now collect the points that have been clustered */
-     std::vector<uint64_t> indices_of_all_points;
+    std::vector<uint64_t> indices_of_all_points;
     
     if(rank == 0) {
 
@@ -832,26 +831,33 @@ int main(int argc, char** argv) {
 
         std::cout << "Time taken to merge clusters " << (end_time - start_time) <<"s"<< std::endl;
 
-        cluster_count = 1;
+        cluster_count = 0;
 
-	uint64_t non_noise_points = 0;
+	uint64_t noise_points = 0;
 
 	for(auto& p: clusters) {
 
-	    for(auto& pt:p.second) {
+	    if(p.second.size() >= min_points) {
 
-	        original_dataset[pt].setClusterInfo(cluster_count);
+	        for(auto& pt:p.second) {
+
+	            original_dataset[pt].setClusterInfo(cluster_count + 1);
+
+	        }
+
+	        cluster_count++;
+
+	    }
+	    else {
+
+	        noise_points += p.second.size();
 
 	    }
 
-	    cluster_count++;
-
-	    non_noise_points += p.second.size();
-
 	}
 
-        std::cout <<" Number of clusters : "<<clusters.size() <<std::endl;
-	std::cout <<" Number of noise points : "<< (original_dataset.size() - non_noise_points) << std::endl;
+        std::cout <<" Number of clusters : "<<cluster_count<<std::endl;
+	std::cout <<" Number of noise points : "<< noise_points << std::endl;
 
 	std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
         std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
