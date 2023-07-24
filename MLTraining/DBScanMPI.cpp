@@ -698,11 +698,16 @@ int main(int argc, char** argv) {
 
 	    }
 
-	    num_clusters++;
+	    /*if a point has no neighbours among in its viscinity then the cluster size will be 1 and it will be a noise point */
+	    if(cluster.size() > 1) {
+	    
+	        num_clusters++;
 
-	    clusters[num_clusters] = cluster;
+	        clusters[num_clusters] = cluster;
 
- 	    num_of_points_clustered += clusters[num_clusters].size();
+ 	        num_of_points_clustered += clusters[num_clusters].size();
+
+	    }
 
 	}
 
@@ -833,7 +838,7 @@ int main(int argc, char** argv) {
 
         cluster_count = 0;
 
-	uint64_t noise_points = 0;
+	uint64_t cluster_points = 0;
 
 	for(auto& p: clusters) {
 
@@ -847,17 +852,14 @@ int main(int argc, char** argv) {
 
 	        cluster_count++;
 
-	    }
-	    else {
-
-	        noise_points += p.second.size();
+		cluster_points += p.second.size();
 
 	    }
 
 	}
 
         std::cout <<" Number of clusters : "<<cluster_count<<std::endl;
-	std::cout <<" Number of noise points : "<< noise_points << std::endl;
+	std::cout <<" Number of noise points : "<< (original_dataset.size() - cluster_points) << std::endl;
 
 	std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
         std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
