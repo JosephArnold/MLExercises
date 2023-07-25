@@ -21,8 +21,9 @@
 #include <mpi.h>
 
 template<typename T>
-static inline uint64_t computeKey(std::vector<T> point, std::vector<uint64_t> swapped_dimensions, std::vector<T> dimensions,
-		                  std::vector<T> mins, T epsilon) {
+static inline uint64_t computeKey(std::vector<T>& point, std::vector<uint64_t>& swapped_dimensions, 
+		                  std::vector<T>& dimensions,
+		                  std::vector<T>& mins, T epsilon) {
 
     uint64_t key = 0;
     uint64_t accumulator = 1;
@@ -42,8 +43,9 @@ static inline uint64_t computeKey(std::vector<T> point, std::vector<uint64_t> sw
 template<typename T>
 static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n,
 				std::map<uint64_t, std::set<uint64_t>>& spatial_index,
-		                std::vector<uint64_t> swapped_dimensions, std::vector<T> dimensions, 
-		                std::vector<T> mins, T epsilon) {
+		                std::vector<uint64_t>& swapped_dimensions, 
+				std::vector<T>& dimensions, 
+		                std::vector<T>& mins, const T epsilon) {
 
     for(uint64_t i = 0; i < n; i++) {
 
@@ -60,9 +62,9 @@ static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n
 
 template<typename T>
 static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key,
-                                             std::vector<uint64_t>& m_swapped_dimensions,
-					     std::vector<T>& dimensions,
-					     std::map<uint64_t,std::pair<uint64_t, uint64_t>>& m_cell_index,
+                                             const std::vector<uint64_t>& m_swapped_dimensions,
+					     const std::vector<T>& dimensions,
+					     const std::map<uint64_t,std::pair<uint64_t, uint64_t>>& m_cell_index,
                                 	     const uint32_t& number_of_features
                                 	     ) {
 
@@ -114,10 +116,10 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key
 #pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp declare reduction (merge : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
-				 std::vector<Data<T>>& dataset, 
-		                 const T& epsilon, const uint64_t& number_of_features, 
-				 std::vector<uint64_t>& vals) {
+static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indices,  
+				               std::vector<Data<T>>& dataset, 
+		                               const T& epsilon, const uint64_t& number_of_features, 
+				               const std::vector<uint64_t>& vals) {
 
     const uint64_t n = vals.size();
     const uint64_t indices_size = indices.size();
@@ -131,12 +133,9 @@ static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,
 
         for (uint64_t i = 0; i < n; i++) {
 
-	    if(!dataset[vals[i]].visited && (Util::calculateEuclideanDist(dataset[vals[i]].getFeatures(), 
-	                                                      curr_point, number_of_features) <= epsilon)) {
+	    if(Util::calculateEuclideanDist(dataset[vals[i]].getFeatures(), 
+	                                    curr_point, number_of_features) <= epsilon) {
 	        neighbours.insert(vals[i]);
-
-                #pragma omp atomic write
-		dataset[vals[i]].visited = true;
 
 	    }
 
@@ -179,8 +178,6 @@ static inline void mergeClustersWithCommonPoints( std::map<uint32_t, std::set<ui
 }
 
 #pragma omp declare reduction (map_add : std::unordered_map<uint64_t,  std::vector<uint64_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
-
-//#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
 int main(int argc, char** argv) {
     
@@ -331,7 +328,9 @@ int main(int argc, char** argv) {
 
         }
 
-    	input.swap(reordered_input);
+    	//input.insert(input.begin(), std::make_move_iterator(reordered_input.begin()), 
+        //            std::make_move_iterator(reordered_input.end()));;
+	input.swap(reordered_input);
 
     	spatial_index.clear();
 
@@ -366,7 +365,7 @@ int main(int argc, char** argv) {
 	std::cout << "Size of spatial index "<<spatial_index.size()<<std::endl;
     	/*compute neighbouring cells */
 	//#pragma omp parallel for
-    	for(auto key : spatial_index) {
+    	for(auto& key : spatial_index) {
 
 	    //auto it = spatial_index.begin();
             //advance(it, i);
@@ -399,7 +398,7 @@ int main(int argc, char** argv) {
 
 	std::set<uint32_t> neighbours;
     	
-	for(auto k : spatial_index) {
+	for(auto& k : spatial_index) {
 
 	    std::vector<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
 
@@ -409,8 +408,7 @@ int main(int argc, char** argv) {
 
             }
 
-
-	 /*if the points are being assigned to the last process, assign all the remaining points to that process */
+	    /*if the points are being assigned to the last process, assign all the remaining points to that process */
 	    if(proc_count == num_of_procs - 1) {
 
                 points_procs[proc_count].insert(k.second.begin(), k.second.end());
@@ -441,7 +439,7 @@ int main(int argc, char** argv) {
 	
 	uint64_t i = 0;
 
-        for(auto&p : points_procs) {
+        for(const auto& p : points_procs) {
 
             total_points += p.second.size();
 
@@ -464,7 +462,7 @@ int main(int argc, char** argv) {
 	indices_of_points = new int32_t[total_points];
 
 	/*copy all the data points, their indices and also their cell numbers. ](Serializing the data structure) */
-	for(auto& p:points_procs) { /*for each process */
+	for(const auto& p:points_procs) { /*for each process */
 
             for(auto& pt:p.second) { /*for each point alloted to the process */
 
@@ -690,45 +688,34 @@ int main(int argc, char** argv) {
 		
 		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
 
-		std::set<uint64_t> neighbours_from_same_cell;
+		std::vector<uint64_t> neighbours_vector(neighbours.begin(), neighbours.end());
 
-		for(auto& pt:neighbours) {
+                uint32_t n_size = neighbours_vector.size();
 
-	            std::set p = spatial_index[dataset[pt].getCellNumber()];
-		    neighbours_from_same_cell.insert(p.begin(), p.end());
+                #pragma omp parallel for reduction(merge_set:neighbours)
+                for(uint32_t c = 0; c < n_size; c++) {
 
-		}
+                    std::set p = spatial_index[dataset[neighbours_vector[c]].getCellNumber()];
+                    neighbours.insert(p.begin(), p.end());
 
-		neighbours.insert(neighbours_from_same_cell.begin(), neighbours_from_same_cell.end());
-               
-		indices.clear();
+                }
 
-		//#pragma omp parallel for
-		for(auto& k : neighbours) {
+                indices.resize(neighbours.size());
 
-		    indices.push_back(k);
-		    
-		    cluster.push_back(dataset[k].getIndex());
+                std::copy(neighbours.begin(), neighbours.end(), indices.begin());
 
-		    /*This is to keep a tab of the number of points that are not added yet to a cluster */
-		    cell_size[dataset[k].getCellNumber()]--;
+                n_size = indices.size();
 
-		    dataset[k].markVisited();
+                for(uint32_t c = 0; c < n_size; c++) {
 
-		    for(auto& pt_in_cell:spatial_index[dataset[k].getCellNumber()]) {
+                    cluster.push_back(dataset[indices[c]].getIndex());
 
-			if(!dataset[pt_in_cell].visited) {
+                    /*This is to keep a tab of the number of points that are not added yet to a cluster */
+                    cell_size[dataset[indices[c]].getCellNumber()] = cell_size[dataset[indices[c]].getCellNumber()] - 1;
 
-			    dataset[pt_in_cell].markVisited();
-		            cluster.push_back(dataset[pt_in_cell].getIndex());
+                    dataset[indices[c]].markVisited();
 
-			}
-
-
-
-		    }
-
-		}
+                }
 
 	    }
 
