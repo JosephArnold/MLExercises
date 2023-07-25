@@ -115,7 +115,7 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t& ke
 
 static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,  
 		                        std::vector<uint64_t>& cluster_points,
-					const std::map<uint64_t, std::vector<uint64_t>>& clusters) {
+					const std::map<uint32_t, std::set<uint64_t>>& clusters) {
 
     for(auto& cluster:clusters) {
 
@@ -629,7 +629,7 @@ int main(int argc, char** argv) {
     
     uint64_t num_clusters = 0;
 
-    std::map<uint64_t, std::vector<uint64_t>> clusters;
+    std::map<uint32_t, std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
 
@@ -643,13 +643,13 @@ int main(int argc, char** argv) {
 
 	if(!dataset[i].isVisited()) { 
 
-            std::vector<uint64_t> cluster;
+            std::set<uint64_t> cluster;
 
 	    std::vector<uint64_t> indices;
 
 	    for(auto& p:spatial_index[dataset[i].getCellNumber()]) {
 
-	        cluster.push_back(dataset[p].getIndex());
+	        cluster.insert(dataset[p].getIndex());
 
 		indices.push_back(p);
 
@@ -726,7 +726,7 @@ int main(int argc, char** argv) {
 
                 for(uint32_t c = 0; c < n_size; c++) {
 
-                    cluster.push_back(dataset[indices[c]].getIndex());
+                    cluster.insert(dataset[indices[c]].getIndex());
 
                     /*This is to keep a tab of the number of points that are not added yet to a cluster */
                     cell_size[dataset[indices[c]].getCellNumber()] = cell_size[dataset[indices[c]].getCellNumber()] - 1;
@@ -757,27 +757,43 @@ int main(int argc, char** argv) {
     std::vector<uint64_t> cluster_lengths;
 
     std::vector<uint64_t> cluster_points;
+    /*send only from non root processes */
+    if(rank != 0) {
+    
+        addClustersToVectors(cluster_lengths, cluster_points, clusters);
 
-    addClustersToVectors(cluster_lengths, cluster_points, clusters);
+    }
 
+    uint64_t number_of_clusters_computed_root;
+    
     /*First transmit the number of clusters in each process to each of the root process*/
     if(rank == 0) {
 
+        number_of_clusters_computed_root = num_clusters;
+
+	num_of_points_clustered = 0; /*do not send any points to the root process */
+
+	num_clusters = 0; /*do not send any points to the root process */
+
         count_of_clusters_per_process.resize(num_of_procs);
 
+	num_of_points_to_cluster.resize(num_of_procs);
+
     }
+
+    std::vector<int32_t> displacements_cluster_len;
 
     MPI_Gather(&num_clusters, 1, MPI_INT, count_of_clusters_per_process.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     MPI_Gather(&num_of_points_clustered, 1, MPI_INT, num_of_points_to_cluster.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    std::vector<int32_t> displacements_cluster_len(num_of_procs);
-    
     if(rank == 0) {
 
 	end_time = omp_get_wtime();
 
         std::cout << "Time taken to cluster " << (end_time - start_time) <<"s"<< std::endl;
+	
+	displacements_cluster_len.resize(num_of_procs - 1);
 
 	/*stores the length of each of the clusters */
 	all_cluster_lens.resize(std::reduce(count_of_clusters_per_process.begin(), count_of_clusters_per_process.end()));
@@ -803,19 +819,16 @@ int main(int argc, char** argv) {
     
     if(rank == 0) {
 
-	for(uint32_t i = 1; i < num_of_procs;i ++) {
+	for(uint32_t i = 1; i < num_of_procs; i++) {
 
 	      displacements_cluster_len[i] = displacements_cluster_len[i-1] + num_of_points_to_cluster[i - 1];
 
 
 	}
 
-	num_of_points_distributed = 0;
+	num_of_points_distributed = std::reduce(num_of_points_to_cluster.begin(), num_of_points_to_cluster.end());
 	
-	for(uint32_t i = 0; i < num_of_procs;i ++) 
-             num_of_points_distributed += num_of_points_to_cluster[i];
-
-	indices_of_all_points.resize(num_of_points_distributed, 0);
+	indices_of_all_points.resize(num_of_points_distributed);
 
 	std::cout << "Received " <<num_of_points_distributed<<" from all sub processes"<<std::endl;
 
@@ -824,6 +837,7 @@ int main(int argc, char** argv) {
     MPI_Gatherv(cluster_points.data(), num_of_points_clustered, MPI_LONG,
                 indices_of_all_points.data(), num_of_points_to_cluster.data(), displacements_cluster_len.data(), MPI_LONG,
                 0, MPI_COMM_WORLD);
+
 
     if(rank == 0) {
 
@@ -834,13 +848,14 @@ int main(int argc, char** argv) {
 	std::cout << "Storing received clusters in map " <<std::endl;
 
 	start_time = omp_get_wtime();
-	std::map<uint32_t, std::set<uint64_t>> clusters;
 
         while(i < indices_of_all_points.size()) {
 
+	    number_of_clusters_computed_root++;
+
 	    for(uint64_t k = 0; k < all_cluster_lens[cluster_count]; k++) { //k will index till each cluster length
 
-                clusters[cluster_count].insert(indices_of_all_points[i + k]);
+                clusters[number_of_clusters_computed_root].insert(indices_of_all_points[i + k]);
 
 	    }
 
