@@ -21,9 +21,9 @@
 #include <mpi.h>
 
 template<typename T>
-static inline uint64_t computeKey(std::vector<T>& point, std::vector<uint64_t>& swapped_dimensions, 
-		                  std::vector<T>& dimensions,
-		                  std::vector<T>& mins, T epsilon) {
+static inline uint64_t computeKey(const std::vector<T>& point, const std::vector<uint64_t>& swapped_dimensions, 
+		                  const std::vector<T>& dimensions,
+		                  const std::vector<T>& mins, const T epsilon) {
 
     uint64_t key = 0;
     uint64_t accumulator = 1;
@@ -41,11 +41,11 @@ static inline uint64_t computeKey(std::vector<T>& point, std::vector<uint64_t>& 
 }
 
 template<typename T>
-static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n,
+static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t& n,
 				std::map<uint64_t, std::set<uint64_t>>& spatial_index,
-		                std::vector<uint64_t>& swapped_dimensions, 
-				std::vector<T>& dimensions, 
-		                std::vector<T>& mins, const T epsilon) {
+		                const std::vector<uint64_t>& swapped_dimensions, 
+				const std::vector<T>& dimensions, 
+		                const std::vector<T>& mins, const T epsilon) {
 
     for(uint64_t i = 0; i < n; i++) {
 
@@ -61,11 +61,11 @@ static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n
 }
 
 template<typename T>
-static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key,
-                                             const std::vector<uint64_t>& m_swapped_dimensions,
-					     const std::vector<T>& dimensions,
-					     const std::map<uint64_t,std::pair<uint64_t, uint64_t>>& m_cell_index,
-                                	     const uint32_t& number_of_features
+static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t& key,
+                                                              const std::vector<uint64_t>& m_swapped_dimensions,
+					                      const std::vector<T>& dimensions,
+					                      const std::map<uint64_t,std::pair<uint64_t, uint64_t>>& m_cell_index,
+                                	                      const uint32_t& number_of_features
                                 	     ) {
 
     std::vector<uint64_t> neighboring_cells;
@@ -110,6 +110,24 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t key
 
     return neighboring_cells;
 
+
+}
+
+static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,  
+		                        std::vector<uint64_t>& cluster_points,
+					const std::map<uint64_t, std::vector<uint64_t>>& clusters) {
+
+    for(auto& cluster:clusters) {
+
+        cluster_lengths.push_back(cluster.second.size());
+
+        for(auto& point_in_cluster:cluster.second) {
+
+            cluster_points.push_back(point_in_cluster);
+
+        }
+
+    }
 
 }
 
@@ -190,9 +208,9 @@ int main(int argc, char** argv) {
     double start_time, end_time;
     DATA_TYPE epsilon_square = 0.0;
     std::vector<uint64_t> m_swapped_dimensions;
-    int32_t* num_of_points_to_cluster;
-    int32_t* displacements;
-    int32_t* indices_of_points;
+    std::vector<int32_t> num_of_points_to_cluster;
+    std::vector<int32_t> displacements;
+    std::vector<int32_t> indices_of_points;
     std::vector<DATA_TYPE> data_points;
     std::vector<DATA_TYPE> data_points_per_process;
     std::vector<Data<DATA_TYPE>> original_dataset;
@@ -384,9 +402,9 @@ int main(int argc, char** argv) {
 
     	uint32_t proc_count = 0;
 
-	num_of_points_to_cluster = new int32_t[num_of_procs];
+	num_of_points_to_cluster.resize(num_of_procs);
 
-	displacements =  new int32_t[num_of_procs];
+	displacements.resize(num_of_procs);
 
 	displacements_of_dataPoints.resize(num_of_procs);
 
@@ -459,7 +477,7 @@ int main(int argc, char** argv) {
 
         }
 
-	indices_of_points = new int32_t[total_points];
+	indices_of_points.resize(total_points);
 
 	/*copy all the data points, their indices and also their cell numbers. ](Serializing the data structure) */
 	for(const auto& p:points_procs) { /*for each process */
@@ -500,13 +518,13 @@ int main(int argc, char** argv) {
 
     MPI_Bcast(&number_of_features, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    MPI_Scatter(num_of_points_to_cluster, 1, MPI_INT, &n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(num_of_points_to_cluster.data(), 1, MPI_INT, &n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     original_indices.resize(n);
 
     data_points_per_process.resize(n * number_of_features);
 
-    MPI_Scatterv(indices_of_points, num_of_points_to_cluster, displacements, MPI_INT, original_indices.data(),
+    MPI_Scatterv(indices_of_points.data(), num_of_points_to_cluster.data(), displacements.data(), MPI_INT, original_indices.data(),
                   n, MPI_INT, 0, MPI_COMM_WORLD);
 
     MPI_Scatterv(data_points.data(), count_points_per_process.data() , displacements_of_dataPoints.data(), MPI_FLOAT, data_points_per_process.data(),
@@ -692,7 +710,7 @@ int main(int argc, char** argv) {
 
                 uint32_t n_size = neighbours_vector.size();
 
-                #pragma omp parallel for reduction(merge_set:neighbours)
+                //#pragma omp parallel for reduction(merge_set:neighbours)
                 for(uint32_t c = 0; c < n_size; c++) {
 
                     std::set p = spatial_index[dataset[neighbours_vector[c]].getCellNumber()];
@@ -735,21 +753,12 @@ int main(int argc, char** argv) {
     }
     
     /*Local Cluster computation done. Prepare to send the points to root process */
+
     std::vector<uint64_t> cluster_lengths;
 
     std::vector<uint64_t> cluster_points;
 
-    for(auto& cluster:clusters) {
-
-        cluster_lengths.push_back(cluster.second.size());
-
-	for(auto& point_in_cluster:cluster.second) {
-
-	    cluster_points.push_back(point_in_cluster);
-
-	}
-
-    }
+    addClustersToVectors(cluster_lengths, cluster_points, clusters);
 
     /*First transmit the number of clusters in each process to each of the root process*/
     if(rank == 0) {
@@ -760,7 +769,7 @@ int main(int argc, char** argv) {
 
     MPI_Gather(&num_clusters, 1, MPI_INT, count_of_clusters_per_process.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    MPI_Gather(&num_of_points_clustered, 1, MPI_INT, num_of_points_to_cluster, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(&num_of_points_clustered, 1, MPI_INT, num_of_points_to_cluster.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     std::vector<int32_t> displacements_cluster_len(num_of_procs);
     
@@ -813,7 +822,7 @@ int main(int argc, char** argv) {
     }
 
     MPI_Gatherv(cluster_points.data(), num_of_points_clustered, MPI_LONG,
-                indices_of_all_points.data(), num_of_points_to_cluster, displacements_cluster_len.data(), MPI_LONG,
+                indices_of_all_points.data(), num_of_points_to_cluster.data(), displacements_cluster_len.data(), MPI_LONG,
                 0, MPI_COMM_WORLD);
 
     if(rank == 0) {
