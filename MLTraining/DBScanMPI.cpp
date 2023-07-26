@@ -984,8 +984,6 @@ int main(int argc, char** argv) {
 
 	        }
 
-		std::cout <<std::endl;
-
 	        cluster_count++;
 
 		cluster_points += p.size();
