@@ -794,7 +794,7 @@ int main(int argc, char** argv) {
 
         std::cout << "Time taken to cluster " << (end_time - start_time) <<"s"<< std::endl;
 	
-	displacements_cluster_len.resize(num_of_procs - 1);
+	displacements_cluster_len.resize(num_of_procs);
 
 	/*stores the length of each of the clusters */
 	all_cluster_lens.resize(std::reduce(count_of_clusters_per_process.begin(), count_of_clusters_per_process.end()));
