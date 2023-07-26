@@ -115,13 +115,13 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t& ke
 
 static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,  
 		                        std::vector<uint64_t>& cluster_points,
-					const std::map<uint32_t, std::set<uint64_t>>& clusters) {
+					const std::vector<std::set<uint64_t>>& clusters) {
 
     for(auto& cluster:clusters) {
 
-        cluster_lengths.push_back(cluster.second.size());
+        cluster_lengths.push_back(cluster.size());
 
-        for(auto& point_in_cluster:cluster.second) {
+        for(auto& point_in_cluster:cluster) {
 
             cluster_points.push_back(point_in_cluster);
 
@@ -165,7 +165,7 @@ static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indi
 
 }
 
-static inline void mergeClustersWithCommonPoints( std::map<uint32_t, std::set<uint64_t>>& clusters) {
+static inline void mergeClustersWithCommonPoints( std::vector<std::set<uint64_t>>& clusters) {
 
     for(auto it = clusters.begin(); it != clusters.end(); it++) {
 
@@ -173,12 +173,12 @@ static inline void mergeClustersWithCommonPoints( std::map<uint32_t, std::set<ui
 
             std::set<uint32_t> intersect;
 
-            set_intersection((*it).second.begin(), (*it).second.end(), (*jt).second.begin(), (*jt).second.end(),
+            set_intersection((*it).begin(), (*it).end(), (*jt).begin(), (*jt).end(),
                              std::inserter(intersect, intersect.begin()));
 
             if(intersect.size() > 0) {
 
-                (*it).second.insert((*jt).second.begin(), (*jt).second.end());
+                (*it).insert((*jt).begin(), (*jt).end());
 
                 jt = clusters.erase(jt);
 
@@ -629,7 +629,8 @@ int main(int argc, char** argv) {
     
     uint64_t num_clusters = 0;
 
-    std::map<uint32_t, std::set<uint64_t>> clusters;
+    //std::map<uint32_t, std::set<uint64_t>> clusters;
+    std::vector<std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
 
@@ -742,9 +743,9 @@ int main(int argc, char** argv) {
 	    
 	        num_clusters++;
 
-	        clusters[num_clusters] = cluster;
+	        clusters.push_back(cluster);
 
- 	        num_of_points_clustered += clusters[num_clusters].size();
+ 	        num_of_points_clustered += cluster.size();
 
 	    }
 
@@ -853,11 +854,15 @@ int main(int argc, char** argv) {
 
 	    number_of_clusters_computed_root++;
 
+	    std::set<uint64_t> current_cluster;
+
 	    for(uint64_t k = 0; k < all_cluster_lens[cluster_count]; k++) { //k will index till each cluster length
 
-                clusters[number_of_clusters_computed_root].insert(indices_of_all_points[i + k]);
+                 current_cluster.insert(indices_of_all_points[i + k]);
 
 	    }
+
+	    clusters.push_back(current_cluster);
 
 	    i += all_cluster_lens[cluster_count];
 
@@ -887,9 +892,9 @@ int main(int argc, char** argv) {
 
 	for(auto& p: clusters) {
 
-	    if(p.second.size() >= min_points) {
+	    if(p.size() >= min_points) {
 
-	        for(auto& pt:p.second) {
+	        for(auto& pt:p) {
 
 	            original_dataset[pt].setClusterInfo(cluster_count + 1);
 
@@ -897,7 +902,7 @@ int main(int argc, char** argv) {
 
 	        cluster_count++;
 
-		cluster_points += p.second.size();
+		cluster_points += p.size();
 
 	    }
 
