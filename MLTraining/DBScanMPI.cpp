@@ -791,8 +791,6 @@ int main(int argc, char** argv) {
 
             uint32_t cluster_count = 0;
 
-            std::cout << "Storing received clusters in map " <<std::endl;
-
             start_time = omp_get_wtime();
 
             while(i < cluster_points.size()) {
@@ -815,6 +813,21 @@ int main(int argc, char** argv) {
 
             /*Now merge the clusters computed by the current process and that of the previous process */
             mergeClustersWithCommonPoints(clusters);
+
+	    /*remove clusters that are less than min points in size */
+	    std::vector<std::set<uint64_t>> new_clusters;
+
+	    for(auto& c: clusters) {
+
+	        if(c.size() >= min_points) {
+
+		    new_clusters.push_back(c);
+
+		}
+
+	    }
+
+	    clusters = new_clusters;
 
 	    /*recompute number of clusters */
 	    num_clusters = clusters.size();
@@ -929,8 +942,6 @@ int main(int argc, char** argv) {
 	uint32_t i = 0;
 
 	uint32_t cluster_count = 0;
-
-	std::cout << "Storing received clusters in map " <<std::endl;
 
 	start_time = omp_get_wtime();
 
