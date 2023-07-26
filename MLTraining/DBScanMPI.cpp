@@ -1,6 +1,6 @@
 // MLTraining.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-#define BLOCK_SIZE 8
+#define BLOCK_SIZE 64
 #define DATA_TYPE float
 
 #include <iostream>
@@ -144,19 +144,24 @@ static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indi
 
     std::set<uint64_t> neighbours;
     //#pragma omp parallel for schedule(dynamic, 32) private(neighboring_points) firstprivate(previous_cell) reduction(merge: rules)
-    #pragma omp parallel for reduction(merge_set:neighbours)
-    for(uint64_t index = 0; index < indices_size; index++) {
+    #pragma omp parallel for schedule(static, BLOCK_SIZE) reduction(merge_set:neighbours)
+    for(uint64_t index = 0; index < indices_size; index = index + BLOCK_SIZE) {
    
-	auto& curr_point = dataset[indices[index]].getFeatures(); 
+	//auto& curr_point = dataset[indices[index]].getFeatures(); 
 
-        for (uint64_t i = 0; i < n; i++) {
+        for (uint64_t i = 0; i < n; i = i + BLOCK_SIZE) {
 
-	    if(Util::calculateEuclideanDist(dataset[vals[i]].getFeatures(), 
-	                                    curr_point, number_of_features) <= epsilon) {
-	        neighbours.insert(vals[i]);
+            for(uint32_t k = 0; (k < BLOCK_SIZE) & ((k + index) < indices_size); k++) {
 
+                for(uint32_t l = 0; (l < BLOCK_SIZE) & ((l + i) < n); l++) {
+	    
+		    if(Util::calculateEuclideanDist(dataset[vals[i + l]].getFeatures(), 
+	                                            dataset[indices[index + k]].getFeatures(), number_of_features) <= epsilon) {
+	                neighbours.insert(vals[i + l]);
+
+	            }
+		}
 	    }
-
 	}
 
     }
@@ -991,15 +996,19 @@ int main(int argc, char** argv) {
 
 	for(auto& p: clusters) {
 
-	    for(auto& pt:p) {
+	    if(p.size() >= min_points) {
 
-	        original_dataset[pt].setClusterInfo(cluster_count + 1);
+	        for(auto& pt:p) {
+
+	            original_dataset[pt].setClusterInfo(cluster_count + 1);
+
+	        }
+
+	        cluster_count++;
+
+                cluster_points += p.size();
 
 	    }
-
-	    cluster_count++;
-
-            cluster_points += p.size();
 
 	}
 
