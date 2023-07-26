@@ -165,18 +165,31 @@ static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indi
 
 }
 
+template <class I1, class I2>
+static inline bool have_common_element(I1 first1, I1 last1, I2 first2, I2 last2) {
+    while (first1 != last1 && first2 != last2) {
+        if (*first1 < *first2)
+            ++first1;
+        else if (*first2 < *first1)
+            ++first2;
+        else
+            return true;
+    }
+    return false;
+}
+
 static inline void mergeClustersWithCommonPoints( std::vector<std::set<uint64_t>>& clusters) {
 
     for(auto it = clusters.begin(); it != clusters.end(); it++) {
 
         for(auto jt = std::next(it); jt != clusters.end();) {
 
-            std::set<uint32_t> intersect;
+            //std::set<uint32_t> intersect;
 
-            set_intersection((*it).begin(), (*it).end(), (*jt).begin(), (*jt).end(),
-                             std::inserter(intersect, intersect.begin()));
-
-            if(intersect.size() > 0) {
+            //set_intersection((*it).begin(), (*it).end(), (*jt).begin(), (*jt).end(),
+            //                 std::inserter(intersect, intersect.begin()));
+            
+            if(have_common_element((*it).begin(), (*it).end(), (*jt).begin(), (*jt).end())) {
 
                 (*it).insert((*jt).begin(), (*jt).end());
 
@@ -189,7 +202,7 @@ static inline void mergeClustersWithCommonPoints( std::vector<std::set<uint64_t>
 
             }
 
-        }
+        } 
 
     }
 
@@ -629,7 +642,6 @@ int main(int argc, char** argv) {
     
     uint64_t num_clusters = 0;
 
-    //std::map<uint32_t, std::set<uint64_t>> clusters;
     std::vector<std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
@@ -758,6 +770,8 @@ int main(int argc, char** argv) {
     std::vector<uint64_t> cluster_lengths;
 
     std::vector<uint64_t> cluster_points;
+
+    /*Now that clusters are computed,*/ 
     /*send only from non root processes */
     if(rank != 0) {
     
