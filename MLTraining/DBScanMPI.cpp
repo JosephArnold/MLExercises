@@ -482,11 +482,15 @@ int main(int argc, char** argv) {
 
 	    std::cout << "Number of points allotted to process "<<p.first<<" is "<<p.second.size()<<std::endl;
 
-	    displacements[p.first + 1] = displacements[p.first] + p.second.size();
+	    if(p.first < num_of_procs - 1) { //No need to calculate displacements for the last points in the last process
+	    
+	        displacements[p.first + 1] = displacements[p.first] + p.second.size();
 
-	    /*This will actually store the displacement values of the actual dataset. Since each data point is defined by 'number_of_features',
-	     * the dispalcement values will be multilpied by the number of features */
-	    displacements_of_dataPoints[p.first + 1] = displacements_of_dataPoints[p.first] + p.second.size() * number_of_features;
+	        /*This will actually store the displacement values of the actual dataset. Since each data point is defined by 'number_of_features',
+	         * the dispalcement values will be multilpied by the number of features */
+	        displacements_of_dataPoints[p.first + 1] = displacements_of_dataPoints[p.first] + p.second.size() * number_of_features;
+
+	    }
 
         }
 
@@ -987,19 +991,15 @@ int main(int argc, char** argv) {
 
 	for(auto& p: clusters) {
 
-	    if(p.size() >= min_points) {
+	    for(auto& pt:p) {
 
-	        for(auto& pt:p) {
-
-	            original_dataset[pt].setClusterInfo(cluster_count + 1);
-
-	        }
-
-	        cluster_count++;
-
-		cluster_points += p.size();
+	        original_dataset[pt].setClusterInfo(cluster_count + 1);
 
 	    }
+
+	    cluster_count++;
+
+            cluster_points += p.size();
 
 	}
 
