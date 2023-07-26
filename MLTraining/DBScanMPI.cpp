@@ -733,14 +733,6 @@ int main(int argc, char** argv) {
 
 	        clusters.push_back(cluster);
 
-		std::cout<<"Printing cluster in process "<<rank<<std::endl;
-		for(auto c:cluster) {
-
-		    std::cout<<c<<" ";
-
-		}
-		std::cout<<std::endl;
-
  	        num_of_points_clustered += cluster.size();
 
 	    }
@@ -755,9 +747,92 @@ int main(int argc, char** argv) {
 
     std::vector<uint64_t> cluster_points;
 
+    if(num_of_procs > 2) {
+
+        if((rank % 2)) { //odd process
+
+            addClustersToVectors(cluster_lengths, cluster_points, clusters);
+
+            /*send number of cluster, then cluster lengths and finally cluster points */
+            MPI_Send(&num_clusters , 1 ,MPI_LONG, rank - 1, 1, MPI_COMM_WORLD);
+
+            MPI_Send(cluster_lengths.data() , cluster_lengths.size() ,MPI_LONG, rank - 1, 2, MPI_COMM_WORLD);
+
+            MPI_Send(cluster_points.data() , cluster_points.size() ,MPI_LONG, rank - 1, 3, MPI_COMM_WORLD);
+
+            clusters.clear(); //No need to send the clusters any further
+
+        }
+
+	if(!(rank % 2) && (rank != (num_of_procs - 1))) { //even process but not the last one
+
+            uint64_t clusters_from_next_rank;
+
+            MPI_Status status;
+
+            MPI_Recv(&clusters_from_next_rank ,1, MPI_LONG, rank + 1, 1, MPI_COMM_WORLD, &status);
+
+            cluster_lengths.resize(clusters_from_next_rank);
+
+            MPI_Recv(cluster_lengths.data() ,clusters_from_next_rank, MPI_LONG, rank + 1, 2, MPI_COMM_WORLD, &status);
+
+            uint64_t points_to_receive = std::reduce(cluster_lengths.begin(), cluster_lengths.end());
+
+            cluster_points.resize(points_to_receive);
+
+            MPI_Recv(cluster_points.data() , points_to_receive, MPI_LONG, rank + 1, 3, MPI_COMM_WORLD, &status);
+
+            /*Store the received clusters in map */
+            uint32_t i = 0;
+
+            uint32_t cluster_count = 0;
+
+            std::cout << "Storing received clusters in map " <<std::endl;
+
+            start_time = omp_get_wtime();
+
+            while(i < cluster_points.size()) {
+
+                std::set<uint64_t> current_cluster;
+
+                for(uint64_t k = 0; k < cluster_lengths[cluster_count]; k++) { //k will index till each cluster length
+
+                     current_cluster.insert(cluster_points[i + k]);
+
+                }
+
+                clusters.push_back(current_cluster);
+
+                i += cluster_lengths[cluster_count];
+
+                cluster_count++;
+
+            }
+
+            /*Now merge the clusters computed by the current process and that of the previous process */
+            mergeClustersWithCommonPoints(clusters);
+
+            /*Only even clusters that are not zero must send the result to root */
+            cluster_lengths.clear();
+
+            cluster_points.clear();
+
+
+        }
+
+    }
+
     /*Now that clusters are computed,*/ 
     /*send only from non root processes */
     if(rank != 0) {
+
+      /*if number of process > 2
+         * Only even processes other than 0 will have clusters to send. Odd processes would have cleared the clusters.
+         *
+         *if the number of processes = 2
+         * only process 1 will have points to send.
+         */
+
     
         addClustersToVectors(cluster_lengths, cluster_points, clusters);
 
@@ -828,8 +903,6 @@ int main(int argc, char** argv) {
 	num_of_points_distributed = std::reduce(num_of_points_to_cluster.begin(), num_of_points_to_cluster.end());
 	
 	indices_of_all_points.resize(num_of_points_distributed);
-
-	std::cout << "Received " <<num_of_points_distributed<<" from all sub processes"<<std::endl;
 
     }
 
