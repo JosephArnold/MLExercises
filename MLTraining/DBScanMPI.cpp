@@ -640,11 +640,11 @@ int main(int argc, char** argv) {
 
     epsilon_square = epsilon * epsilon;
     
-    uint64_t num_clusters = 0;
-
     std::vector<std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
+
+    uint64_t num_clusters = 0;  
 
     if(rank == 0) {
 
@@ -728,8 +728,6 @@ int main(int argc, char** argv) {
 
 	    /*if a point has no neighbours among in its viscinity then the cluster size will be 1 and it will be a noise point */
 	    if(cluster.size() > 1) {
-	    
-	        num_clusters++;
 
 	        clusters.push_back(cluster);
 
@@ -747,6 +745,8 @@ int main(int argc, char** argv) {
 
     std::vector<uint64_t> cluster_points;
 
+    num_clusters = clusters.size();
+
     if(num_of_procs > 2) {
 
         if((rank % 2)) { //odd process
@@ -761,6 +761,10 @@ int main(int argc, char** argv) {
             MPI_Send(cluster_points.data() , cluster_points.size() ,MPI_LONG, rank - 1, 3, MPI_COMM_WORLD);
 
             clusters.clear(); //No need to send the clusters any further
+
+	    num_of_points_clustered = 0;
+
+	    num_clusters = 0;
 
         }
 
@@ -812,11 +816,20 @@ int main(int argc, char** argv) {
             /*Now merge the clusters computed by the current process and that of the previous process */
             mergeClustersWithCommonPoints(clusters);
 
-            /*Only even clusters that are not zero must send the result to root */
+	    /*recompute number of clusters */
+	    num_clusters = clusters.size();
+
+	    /*recompute number of points */
+	    num_of_points_clustered = 0;
+
+	    for(auto& c:clusters)
+	        num_of_points_clustered += c.size();
+	
+            /*Only even clusters that are not zero must send the result to root
+	     * cluster_lengths and cluster_points are cleared in order to add the newly merged clusters */
             cluster_lengths.clear();
 
             cluster_points.clear();
-
 
         }
 
@@ -843,7 +856,7 @@ int main(int argc, char** argv) {
     /*First transmit the number of clusters in each process to each of the root process*/
     if(rank == 0) {
 
-        number_of_clusters_computed_root = num_clusters;
+        number_of_clusters_computed_root = clusters.size(); //number of clusters could have increased as clusters from rank 1 would have been merged
 
 	num_of_points_clustered = 0; /*do not send any points to the root process */
 
@@ -970,6 +983,8 @@ int main(int argc, char** argv) {
 	            original_dataset[pt].setClusterInfo(cluster_count + 1);
 
 	        }
+
+		std::cout <<std::endl;
 
 	        cluster_count++;
 
