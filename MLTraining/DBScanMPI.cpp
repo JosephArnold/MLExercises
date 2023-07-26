@@ -592,7 +592,7 @@ int main(int argc, char** argv) {
     /*Compute cell dimensions */
     for(uint64_t j = 0; j < number_of_features; j++) {
 
-        dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon / sqrtf(2.0))) + 1;
+        dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
         total_cells *= dimensions[j];
 
     }
@@ -608,7 +608,7 @@ int main(int argc, char** argv) {
     });
 
     /*compute keys for all cells */
-    compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, (epsilon / sqrtf(2.0)));
+    compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
 
     for(auto& cell:spatial_index)
         cell_size[cell.first] = cell.second.size();
@@ -659,16 +659,6 @@ int main(int argc, char** argv) {
             std::set<uint64_t> cluster;
 
 	    std::vector<uint64_t> indices;
-
-	    for(auto& p:spatial_index[dataset[i].getCellNumber()]) {
-
-	        cluster.insert(dataset[p].getIndex());
-
-		indices.push_back(p);
-
-		dataset[p].visited= true;
-
-	    }
 	    
 	    indices.push_back(i);
 
@@ -718,33 +708,19 @@ int main(int argc, char** argv) {
 		std::vector<uint64_t> vals(vals_set.begin(), vals_set.end());
 		
 		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
-
-		std::vector<uint64_t> neighbours_vector(neighbours.begin(), neighbours.end());
-
-                uint32_t n_size = neighbours_vector.size();
-
-                //#pragma omp parallel for reduction(merge_set:neighbours)
-                for(uint32_t c = 0; c < n_size; c++) {
-
-                    std::set p = spatial_index[dataset[neighbours_vector[c]].getCellNumber()];
-                    neighbours.insert(p.begin(), p.end());
-
-                }
-
-                indices.resize(neighbours.size());
+                
+		indices.resize(neighbours.size());
 
                 std::copy(neighbours.begin(), neighbours.end(), indices.begin());
 
-                n_size = indices.size();
+                for(const auto& point: indices) {
 
-                for(uint32_t c = 0; c < n_size; c++) {
-
-                    cluster.insert(dataset[indices[c]].getIndex());
+                    cluster.insert(dataset[point].getIndex());
 
                     /*This is to keep a tab of the number of points that are not added yet to a cluster */
-                    cell_size[dataset[indices[c]].getCellNumber()] = cell_size[dataset[indices[c]].getCellNumber()] - 1;
+                    cell_size[dataset[point].getCellNumber()]--;
 
-                    dataset[indices[c]].markVisited();
+                    dataset[point].markVisited();
 
                 }
 
@@ -756,6 +732,14 @@ int main(int argc, char** argv) {
 	        num_clusters++;
 
 	        clusters.push_back(cluster);
+
+		std::cout<<"Printing cluster in process "<<rank<<std::endl;
+		for(auto c:cluster) {
+
+		    std::cout<<c<<" ";
+
+		}
+		std::cout<<std::endl;
 
  	        num_of_points_clustered += cluster.size();
 
