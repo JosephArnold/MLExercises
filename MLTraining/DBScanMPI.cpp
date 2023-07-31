@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <map>
 #include <queue>
+#include <list>
 #include <cfloat>
 #include <fstream>
 #include <omp.h>
@@ -115,7 +116,7 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t& ke
 
 static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,  
 		                        std::vector<uint64_t>& cluster_points,
-					const std::vector<std::set<uint64_t>>& clusters) {
+					const std::list<std::set<uint64_t>>& clusters) {
 
     for(auto& cluster:clusters) {
 
@@ -183,7 +184,7 @@ static inline bool have_common_element(I1 first1, I1 last1, I2 first2, I2 last2)
     return false;
 }
 
-static inline void mergeClustersWithCommonPoints( std::vector<std::set<uint64_t>>& clusters) {
+static inline void mergeClustersWithCommonPoints( std::list<std::set<uint64_t>>& clusters) {
 
     for(auto it = clusters.begin(); it != clusters.end(); it++) {
 
@@ -649,7 +650,7 @@ int main(int argc, char** argv) {
 
     epsilon_square = epsilon * epsilon;
     
-    std::vector<std::set<uint64_t>> clusters;
+    std::list<std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
 
@@ -824,7 +825,7 @@ int main(int argc, char** argv) {
             mergeClustersWithCommonPoints(clusters);
 
 	    /*remove clusters that are less than min points in size */
-	    std::vector<std::set<uint64_t>> new_clusters;
+	    std::list<std::set<uint64_t>> new_clusters;
 
 	    for(auto& c: clusters) {
 
@@ -994,21 +995,42 @@ int main(int argc, char** argv) {
 
 	uint64_t cluster_points = 0;
 
-	for(auto& p: clusters) {
+	if((num_of_procs == 2) || (num_of_procs % 2)) {
+	
+	    for(auto& p: clusters) {
 
-	    if(p.size() >= min_points) {
+	        if(p.size() >= min_points) {
 
-	        for(auto& pt:p) {
+	            for(auto& pt:p) {
 
-	            original_dataset[pt].setClusterInfo(cluster_count + 1);
+	                original_dataset[pt].setClusterInfo(cluster_count + 1);
+
+	            }
+
+	            cluster_count++;
+
+                    cluster_points += p.size();
 
 	        }
 
-	        cluster_count++;
+	    }
+
+	}
+	else {
+
+	    for(auto& p: clusters) {
+
+                for(auto& pt:p) {
+
+                    original_dataset[pt].setClusterInfo(cluster_count + 1);
+
+                }
+
+                cluster_count++;
 
                 cluster_points += p.size();
 
-	    }
+            }
 
 	}
 
