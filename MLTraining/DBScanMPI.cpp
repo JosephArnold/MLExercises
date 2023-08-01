@@ -12,7 +12,6 @@
 #include <unordered_map>
 #include <map>
 #include <queue>
-#include <list>
 #include <cfloat>
 #include <fstream>
 #include <omp.h>
@@ -116,7 +115,7 @@ static inline std::vector<uint64_t> compute_neighbouring_keys(const uint64_t& ke
 
 static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,  
 		                        std::vector<uint64_t>& cluster_points,
-					const std::list<std::set<uint64_t>>& clusters) {
+					const std::vector<std::set<uint64_t>>& clusters) {
 
     for(auto& cluster:clusters) {
 
@@ -133,7 +132,7 @@ static inline void addClustersToVectors(std::vector<uint64_t>& cluster_lengths,
 }
 
 #pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
-#pragma omp declare reduction (merge : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge : std::vector<std::set<uint64_t>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
 static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indices,  
 				               std::vector<Data<T>>& dataset, 
@@ -184,7 +183,7 @@ static inline bool have_common_element(I1 first1, I1 last1, I2 first2, I2 last2)
     return false;
 }
 
-static inline void mergeClustersWithCommonPoints( std::list<std::set<uint64_t>>& clusters) {
+static inline void mergeClustersWithCommonPoints( std::vector<std::set<uint64_t>>& clusters) {
 
     for(auto it = clusters.begin(); it != clusters.end(); it++) {
 
@@ -650,7 +649,7 @@ int main(int argc, char** argv) {
 
     epsilon_square = epsilon * epsilon;
     
-    std::list<std::set<uint64_t>> clusters;
+    std::vector<std::set<uint64_t>> clusters;
 
     uint64_t num_of_points_clustered = 0;
 
@@ -662,6 +661,7 @@ int main(int argc, char** argv) {
 
     }
 
+    #pragma omp parallel for reduction(merge:clusters)
     for (uint64_t i = 0; i < n; i++) {
 
 	if(!dataset[i].isVisited()) { 
@@ -728,9 +728,11 @@ int main(int argc, char** argv) {
                     cluster.insert(dataset[point].getIndex());
 
                     /*This is to keep a tab of the number of points that are not added yet to a cluster */
-                    cell_size[dataset[point].getCellNumber()]--;
+                    #pragma omp atomic write
+                    cell_size[dataset[point].getCellNumber()] = cell_size[dataset[point].getCellNumber()] - 1;
 
-                    dataset[point].markVisited();
+		    #pragma omp atomic write
+                    dataset[point].visited = true;
 
                 }
 
@@ -741,11 +743,20 @@ int main(int argc, char** argv) {
 
 	        clusters.push_back(cluster);
 
- 	        num_of_points_clustered += cluster.size();
+ 	        //num_of_points_clustered += cluster.size();
 
 	    }
 
 	}
+
+    }
+
+    /*Now merge the clusters computed by the current process */
+    mergeClustersWithCommonPoints(clusters);
+
+    for(auto& k:clusters) {
+
+        num_of_points_clustered += k.size();
 
     }
     
@@ -825,7 +836,7 @@ int main(int argc, char** argv) {
             mergeClustersWithCommonPoints(clusters);
 
 	    /*remove clusters that are less than min points in size */
-	    std::list<std::set<uint64_t>> new_clusters;
+	    std::vector<std::set<uint64_t>> new_clusters;
 
 	    for(auto& c: clusters) {
 
