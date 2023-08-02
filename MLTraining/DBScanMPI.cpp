@@ -144,7 +144,7 @@ static inline std::set<uint64_t> getNeighbours(const std::vector<uint64_t>& indi
 
     std::set<uint64_t> neighbours;
     //#pragma omp parallel for schedule(dynamic, 32) private(neighboring_points) firstprivate(previous_cell) reduction(merge: rules)
-    #pragma omp parallel for schedule(static, BLOCK_SIZE) reduction(merge_set:neighbours)
+    #pragma omp parallel for reduction(merge_set:neighbours)
     for(uint64_t index = 0; index < indices_size; index = index + BLOCK_SIZE) {
    
 	//auto& curr_point = dataset[indices[index]].getFeatures(); 
@@ -743,7 +743,7 @@ int main(int argc, char** argv) {
 
 	        clusters.push_back(cluster);
 
- 	        //num_of_points_clustered += cluster.size();
+ 	        num_of_points_clustered += cluster.size();
 
 	    }
 
@@ -751,15 +751,6 @@ int main(int argc, char** argv) {
 
     }
 
-    /*Now merge the clusters computed by the current process */
-    mergeClustersWithCommonPoints(clusters);
-
-    for(auto& k:clusters) {
-
-        num_of_points_clustered += k.size();
-
-    }
-    
     /*Local Cluster computation done. Prepare to send the points to root process */
 
     std::vector<uint64_t> cluster_lengths;
@@ -781,9 +772,10 @@ int main(int argc, char** argv) {
 
             MPI_Send(cluster_points.data() , cluster_points.size() ,MPI_LONG, rank - 1, 3, MPI_COMM_WORLD);
 
-            clusters.clear(); //No need to send the clusters any further
+	    /* No need to send the clusters any further */
+            clusters.clear();
 
-	    num_of_points_clustered = 0;
+	    num_of_points_clustered = 0; 
 
 	    num_clusters = 0;
 
@@ -994,44 +986,19 @@ int main(int argc, char** argv) {
 
 	uint64_t cluster_points = 0;
 
-	if((num_of_procs == 2) || (num_of_procs % 2)) {
-	
-	    for(auto& p: clusters) {
+	for(auto& p: clusters) {
 
-	        if(p.size() >= min_points) {
+            for(auto& pt:p) {
 
-	            for(auto& pt:p) {
-
-	                original_dataset[pt].setClusterInfo(cluster_count + 1);
-
-	            }
-
-	            cluster_count++;
-
-                    cluster_points += p.size();
-
-	        }
-
-	    }
-
-	}
-	else {
-
-	    for(auto& p: clusters) {
-
-                for(auto& pt:p) {
-
-                    original_dataset[pt].setClusterInfo(cluster_count + 1);
-
-                }
-
-                cluster_count++;
-
-                cluster_points += p.size();
+                original_dataset[pt].setClusterInfo(cluster_count + 1);
 
             }
 
-	}
+            cluster_count++;
+
+            cluster_points += p.size();
+
+        }
 
         std::cout <<" Number of clusters : "<<cluster_count<<std::endl;
 	std::cout <<" Number of noise points : "<< (original_dataset.size() - cluster_points) << std::endl;
