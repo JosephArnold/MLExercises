@@ -661,7 +661,7 @@ int main(int argc, char** argv) {
 
     }
 
-    #pragma omp parallel for reduction(merge:clusters)
+    //#pragma omp parallel for reduction(merge:clusters)
     for (uint64_t i = 0; i < n; i++) {
 
 	if(!dataset[i].isVisited()) { 
@@ -739,7 +739,7 @@ int main(int argc, char** argv) {
 	    }
 
 	    /*if a point has no neighbours among in its viscinity then the cluster size will be 1 and it will be a noise point */
-	    if(cluster.size() > 1) {
+	    if(cluster.size() >= min_points) {
 
 	        clusters.push_back(cluster);
 
@@ -837,18 +837,6 @@ int main(int argc, char** argv) {
 
 	    /*remove clusters that are less than min points in size */
 	    std::vector<std::set<uint64_t>> new_clusters;
-
-	    for(auto& c: clusters) {
-
-	        if(c.size() >= min_points) {
-
-		    new_clusters.push_back(c);
-
-		}
-
-	    }
-
-	    clusters = new_clusters;
 
 	    /*recompute number of clusters */
 	    num_clusters = clusters.size();
