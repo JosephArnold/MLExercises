@@ -728,10 +728,10 @@ int main(int argc, char** argv) {
                     cluster.insert(dataset[point].getIndex());
 
                     /*This is to keep a tab of the number of points that are not added yet to a cluster */
-                    #pragma omp atomic write
+                    //#pragma omp atomic write
                     cell_size[dataset[point].getCellNumber()] = cell_size[dataset[point].getCellNumber()] - 1;
 
-		    #pragma omp atomic write
+		    //#pragma omp atomic write
                     dataset[point].visited = true;
 
                 }
