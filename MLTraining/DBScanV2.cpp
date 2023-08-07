@@ -1,6 +1,6 @@
 // MLTraining.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-#define BLOCK_SIZE 8
+
 #define DATA_TYPE float
 
 #include <iostream>
@@ -18,14 +18,13 @@
 #include "Util.cpp"
 #include "Data.cpp"
 #include <climits>
-#include <mpi.h>
 
 template<typename T>
-static inline uint64_t computeKey(std::vector<T> point, std::vector<uint64_t> swapped_dimensions, std::vector<T> dimensions,
+static inline uint32_t computeKey(std::vector<T> point, std::vector<uint32_t> swapped_dimensions, std::vector<T> dimensions,
 		                  std::vector<T> mins, T epsilon) {
 
-    uint64_t key = 0;
-    uint64_t accumulator = 1;
+    uint32_t key = 0;
+    uint32_t accumulator = 1;
 
     for(auto d : swapped_dimensions) {
 
@@ -40,16 +39,16 @@ static inline uint64_t computeKey(std::vector<T> point, std::vector<uint64_t> sw
 }
 
 template<typename T>
-static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n,
-				std::map<uint64_t, std::set<uint64_t>>& spatial_index,
-		                std::vector<uint64_t> swapped_dimensions, std::vector<T> dimensions, 
+static inline void compute_keys(std::vector<Data<T>>& data_set, const uint32_t n,
+				std::map<uint32_t, std::vector<uint32_t>>& spatial_index,
+		                std::vector<uint32_t> swapped_dimensions, std::vector<T> dimensions, 
 		                std::vector<T> mins, T epsilon) {
 
-    for(uint64_t i = 0; i < n; i++) {
+    for(uint32_t i = 0; i < n; i++) {
 
         auto key = computeKey(data_set[i].getFeatures(), swapped_dimensions, dimensions, mins, epsilon);
 
-        spatial_index[key].insert(i);
+        spatial_index[key].push_back(i);
 
         data_set[i].setCellNumber(key);
 
@@ -58,631 +57,335 @@ static inline void compute_keys(std::vector<Data<T>>& data_set, const uint64_t n
        
 }
 
+
+
+#pragma omp declare reduction (merge : std::vector<std::vector<uint64_t>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge_vector : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 template<typename T>
-static inline std::vector<uint64_t> compute_neighbouring_keys(const uint32_t key,
-                                             std::vector<uint64_t> m_swapped_dimensions,
-					     std::vector<T> dimensions,
-					     std::map<uint64_t,std::pair<uint64_t, uint64_t>> m_cell_index,
-                                	     const uint32_t& number_of_features
-                                	     ) {
+static inline std::vector<uint64_t> getNeighbours(const uint32_t& index,  
+				 std::vector<Data<T>>& dataunordered_set, 
+		                 const T epsilon, const uint32_t& number_of_features, 
+				 std::vector<uint32_t>& vals) {
 
-    std::vector<uint64_t> neighboring_cells;
-    neighboring_cells.reserve(std::pow(3, number_of_features));
-    neighboring_cells.push_back(key);
+    std::vector<uint64_t> neighbours;
 
-            // cell accumulators
-    uint64_t cells_in_lower_space = 1;
-    uint64_t cells_in_current_space = 1;
-    uint64_t number_of_points = m_cell_index.find(key)->second.second;
+    const uint32_t& n = vals.size();
 
-            // fetch all existing neighboring cells
-    for (size_t d : m_swapped_dimensions) {
+    std::vector<T> curr_point = dataunordered_set[index].getFeatures();
 
-    	cells_in_current_space *= dimensions[d];
+    #pragma omp parallel for reduction(merge_vector:neighbours)
+    for (uint32_t i = 0; i < n; i++) {
 
-        for (size_t i = 0, end = neighboring_cells.size(); i < end; ++i) {
+        if(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
+				           curr_point, number_of_features)
+                <= epsilon) {
+                
+	    neighbours.push_back(vals[i]);
 
-            const uint64_t current_cell = neighboring_cells[i];
-
-            // check "left" neighbor - a.k.a the cell in the current dimension that has a lower number
-            const uint64_t left = current_cell - cells_in_lower_space;
-            const auto found_left = m_cell_index.find(left);
-            if (current_cell % cells_in_current_space >= cells_in_lower_space) {
-                neighboring_cells.push_back(left);
-                number_of_points += found_left != m_cell_index.end() ? found_left->second.second : 0;
-            }
-            
-    	    // check "right" neighbor - a.k.a the cell in the current dimension that has a higher number
-            const uint64_t right = current_cell + cells_in_lower_space;
-            const auto found_right = m_cell_index.find(right);
-            if (current_cell % cells_in_current_space < cells_in_current_space - cells_in_lower_space) {
-
-                neighboring_cells.push_back(right);
-                number_of_points += found_right != m_cell_index.end() ? found_right->second.second : 0;
-            }
         }
 
-        cells_in_lower_space = cells_in_current_space;
-
-    }
-
-    return neighboring_cells;
-
-
-}
-
-#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
-#pragma omp declare reduction (merge : std::vector<uint64_t> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-template<typename T>
-static inline std::set<uint64_t> getNeighbours(std::vector<uint64_t>& indices,  
-				 std::vector<Data<T>>& dataunordered_set, 
-		                 const T& epsilon, const uint64_t& number_of_features, 
-				 std::vector<uint64_t>& vals) {
-
-    const uint64_t n = vals.size();
-    const uint64_t indices_size = indices.size();
-
-    std::set<uint64_t> neighbours;
-
-    #pragma omp parallel for reduction(merge_set:neighbours)
-    for(uint64_t index = 0; index < indices_size; index++) {
-   
-	auto& curr_point = dataunordered_set[indices[index]].getFeatures(); 
-
-        for (uint64_t i = 0; i < n; i++) {
-
-	    if(Util::calculateEuclideanDist<T>(dataunordered_set[vals[i]].getFeatures(), 
-	                                                      curr_point, number_of_features) <= epsilon) {
-	        neighbours.insert(vals[i]);
-
-	    }
-
-	}
-
-    }
+     }
 
     return neighbours;
 
 }
 
-#pragma omp declare reduction (unordered_map_add : std::unordered_map<uint64_t,  std::vector<uint64_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (map_add : std::map<uint32_t,  std::set<uint32_t>> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
-//#pragma omp declare reduction (merge_set : std::set<uint64_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge_set : std::set<uint32_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
 
 int main(int argc, char** argv) {
     
-    uint64_t min_points = 0;
+    uint32_t min_points = 0;
     DATA_TYPE epsilon = 0.0;
-    uint64_t number_of_features = 0;
-    uint64_t n = 0;
-    uint64_t total_num_of_neighbours = 0;
+    uint32_t number_of_features = 0;
     std::string input_filename = "";
     std::string output_filename = "";
+    std::vector<std::vector<DATA_TYPE>> input;
     double start_time, end_time;
-    DATA_TYPE epsilon_square = 0.0;
-    std::vector<uint64_t> m_swapped_dimensions;
-    int32_t* num_of_points_to_cluster;
-    int32_t* displacements;
-    int32_t* indices_of_points;
-    std::vector<DATA_TYPE> data_points;
-    std::vector<DATA_TYPE> data_points_per_process;
-    std::vector<Data<DATA_TYPE>> original_dataset;
+
+    std::map<uint32_t, uint32_t> cell_size;
+  
+    start_time = omp_get_wtime();
+    
+    try {
+    if(argc > 4) {
+        input_filename = argv[1];
+        std::ifstream csv_file;
+        csv_file.open(input_filename);
+        input = Util::parseCSVfile<DATA_TYPE>(csv_file);	
+        min_points = std::stoi(argv[2]);
+	epsilon = std::stod(argv[3]);
+	output_filename = argv[4];
+    }
+    else {
+        std::cerr<<"Please provide the correct path to the CSV file, minimum point, epsilon and output file "<<
+		    std::endl;
+        return 0;
+    }
+
+    uint32_t n = static_cast<int32_t>(input.size());
+
     std::vector<Data<DATA_TYPE>> dataset;
-    uint64_t num_of_points_distributed = 0;
-    std::map<uint64_t, uint64_t> cell_size;
-    std::map<uint64_t, std::set<uint64_t>> spatial_index;
-    std::unordered_map<uint64_t, std::set<uint64_t>> neighbour_keys;
-    std::vector<int32_t> original_indices;
-    std::vector<int32_t> count_points_per_process;
-    std::vector<int32_t> count_of_clusters_per_process;
-    std::vector<int32_t> displacements_of_dataPoints;
-    std::vector<DATA_TYPE> mins;
-    std::vector<DATA_TYPE> maxs;
-    std::vector<DATA_TYPE> dimensions;
-    std::map<uint64_t,std::pair<uint64_t, uint64_t>> m_cell_index;
-    uint64_t total_cells = 1;
 
-    std::vector<uint32_t> all_cluster_lens;
-    MPI_Init(&argc, &argv);
+    uint32_t total_cells = 1;
 
-    int32_t rank, num_of_procs;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &num_of_procs);
- 
-    if(rank == 0) { 
+    DATA_TYPE epsilon_square = epsilon * epsilon;
 
-	std::vector<std::vector<DATA_TYPE>> input;
+    std::cout << "Size of the input dataset is " << n << std::endl;
 
-        start_time = omp_get_wtime();
-    
-        if(argc > 4) {
-        
-	    input_filename = argv[1];
-            std::ifstream csv_file;
-            csv_file.open(input_filename);
-            input = Util::parseCSVfile<DATA_TYPE>(csv_file);	
-            min_points = std::stoi(argv[2]);
-	    epsilon = std::stod(argv[3]);
-	    output_filename = argv[4];
-        }
-        else {
-            std::cerr<<"Please provide the correct path to the CSV file, minimum point, epsilon and output file "<<
-	    std::endl;
-        
-	    return 0;
-    
-	}
-      
-    	n = static_cast<uint64_t>(input.size());
+    end_time = omp_get_wtime();
 
-    	epsilon_square = epsilon * epsilon;
-
-    	std::cout << "Size of the input dataset is " << n << std::endl;
-
-    	end_time = omp_get_wtime();
-
-    	std::cout << "Time to load dataset " << (end_time - start_time) <<"s"<< std::endl;
-    
-	if(n > 0) {
+    std::cout << "Time to load dataset " << (end_time - start_time) <<"s"<< std::endl;
+    if(n > 0) {
      
-            number_of_features = input[0].size();
-
-    	}
-
-    	mins.resize(number_of_features, FLT_MAX);
-    	maxs.resize(number_of_features, 0.0);
-    	dimensions.resize(number_of_features, 0.0);
-
-    	for(uint64_t i = 0; i < n; i++) {
-
-	    for(uint64_t j = 0; j < number_of_features; j++) {
-
-	        if(input[i][j] < mins[j])
-	            mins[j] = input[i][j];
-
-	        if(input[i][j] > maxs[j])
-	            maxs[j] = input[i][j];
-
-	    }
-
-        }
-
-        /*Compute cell dimensions */
-        for(uint64_t j = 0; j < number_of_features; j++) {
-
-	    dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
-	    total_cells *= dimensions[j];
-
-        }
-
-        std::cout<<"Total cells  "<<total_cells<< std::endl;
-
-        m_swapped_dimensions.resize(number_of_features, 0);
-    
-	/*SWAP dimensions */
-        std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
-    
-        // swap the dimensions descending by their cell sizes
-        std::sort(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), [&] (size_t a, size_t b) {
-            return dimensions[a] < dimensions[b];
-        });
-
-        for(auto& ip:input) {
-
-            dataset.push_back(Data(ip));
-
-        }
-
-
-    	/*compute keys for all cells */
-    	compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
-
-    	std::cout<<"Keys computed"<<std::endl;
-
-    	std::vector<std::vector<DATA_TYPE>> reordered_input;
-    
-	std::map<uint64_t, uint64_t> map_to_original;
-    
-    	/*Reorder the cells based on their spatial indexing */
-   
-    	uint64_t counter = 0;
-
-    	for (auto& cell : spatial_index) {
-
-            auto& index  = cell.second;
-        
-	    for(auto &pt:index) {
-
-                reordered_input.push_back(input[pt]);
-
-	        map_to_original[counter++] = pt; 
-
-	    }
-
-        }
-
-    	input.swap(reordered_input);
-
-    	spatial_index.clear();
-
-    	dataset.clear();
-
-    	for(auto& ip:input) {
-
-            dataset.push_back(Data(ip));
-
-    	}
-
-        /*compute keys again */
-        compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
-        
-	/*Compute cell index */
-        uint64_t accumulator = 0;
-
-        // sum up the offset into the points array
-        for (auto& cell : spatial_index) {
-            auto& index  = m_cell_index[cell.first];
-            index.first  = accumulator;
-            index.second = cell.second.size();
-            accumulator += cell.second.size();
-    
-        }
-
-    	// introduce an end dummy
-   	m_cell_index[total_cells].first  = spatial_index.size();
-    	m_cell_index[total_cells].second = 0;
-    
-    	/*compute neighbouring cells */
-
-    	for(auto& cell : spatial_index) {
-    
-           std::vector<uint64_t> neighboring_cells = compute_neighbouring_keys(cell.first, m_swapped_dimensions,
-                                             				       dimensions, m_cell_index, number_of_features);
-
-           for(auto pt:neighboring_cells) {
-
-               neighbour_keys[cell.first].insert(pt);
-
-           }
-
-    	}    
-
-	uint32_t points_per_procs = n / num_of_procs;
-
-	if(points_per_procs == 0)
-	    points_per_procs = 1;
-
-    	std::map<uint32_t, std::set<uint32_t>> points_procs;
-
-    	uint32_t proc_count = 0;
-
-	std::cout << "Size of spatial index "<<spatial_index.size()<<std::endl;
-    	std::set<uint32_t> neighbours;
-
-	num_of_points_to_cluster = new int32_t[num_of_procs];
-
-	displacements =  new int32_t[num_of_procs];
-
-	displacements_of_dataPoints.resize(num_of_procs);
-
-	//std::vector<int32_t> count_points_per_process;
-
-	displacements_of_dataPoints[0] = 0;
-
-	displacements[0] = 0;
-
-	uint64_t total_points = 0;
-    	
-	for(auto& k:spatial_index) {
-
-	    /*if the points are being assigned to the last process, assign all the remaining points to that process */
-	    if(proc_count == num_of_procs - 1) {
-
-	        std::set<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
-
-                for(auto& pt : neighbouring_keys) {
-
-                    neighbours.insert(spatial_index[pt].begin(), spatial_index[pt].end());
-
-                }
-
-                points_procs[proc_count].insert(k.second.begin(), k.second.end());
-
-
-	    }		    
-	    else if(points_procs[proc_count].size() < points_per_procs) {
-
-	        std::set<uint64_t>& neighbouring_keys = neighbour_keys[k.first];
-
-                /*all neighbours of the current point assigned to the same process */
-
-	        for(auto& pt : neighbouring_keys) {
-
-                    neighbours.insert(spatial_index[pt].begin(), spatial_index[pt].end());
-
-                }
-
-                points_procs[proc_count].insert(k.second.begin(), k.second.end());
-	    }
-	    else {
-	    
-	        points_procs[proc_count].insert(neighbours.begin(), neighbours.end());
-
-	        neighbours.clear();
-
-		proc_count++;
-
-	    }
-        
-        }
-
-	/*compute number of points allocated per process
-	 * Compute displacements
-	 */
-	uint64_t i = 0;
-
-        for(auto&p : points_procs) {
-
-            total_points += p.second.size();
-
-	    num_of_points_to_cluster[p.first] = p.second.size();
-
-	    num_of_points_distributed += p.second.size();
-
-	    count_points_per_process.push_back(p.second.size() * number_of_features);
-
-	    std::cout << "Number of points allotted to process "<<p.first<<" is "<<p.second.size()<<std::endl;
-
-	    displacements[p.first + 1] = displacements[p.first] + p.second.size();
-
-	    /*This will actually store the displacement values of the actual dataset. Since each data point is defined by 'number_of_features',
-	     * the dispalcement values will be multilpied by the number of features */
-	    displacements_of_dataPoints[p.first + 1] = displacements_of_dataPoints[p.first] + p.second.size() * number_of_features;
-
-        }
-
-	indices_of_points = new int32_t[total_points];
-
-	/*copy all the data points, their indices and also their cell numbers. ](Serializing the data structure) */
-	for(auto& p:points_procs) { /*for each process */
-
-            for(auto& pt:p.second) { /*for each point alloted to the process */
-
-                indices_of_points[i] = pt;
-
-		//std::cout << "Point is "<<pt<<std::endl;
-		/*copy the data point */
-		for(auto feature:dataset[pt].getFeatures()) {
-
-		    data_points.push_back(feature);
-
-		}
-
-	        i++;
-
-            }
-
-        }
-
-	original_dataset = dataset;
-
-	dataset.clear();
-
-	spatial_index.clear();
-
+        number_of_features = input[0].size();
 
     }
 
-    MPI_Bcast(&epsilon, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    std::vector<DATA_TYPE> mins(number_of_features, FLT_MAX);
+    std::vector<DATA_TYPE> maxs(number_of_features, 0.0);
+    std::vector<DATA_TYPE> dimensions(number_of_features, 0.0);
 
-    MPI_Bcast(&number_of_features, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    std::map<uint32_t, std::vector<uint32_t>> spatial_index;
 
-    MPI_Scatter(num_of_points_to_cluster, 1, MPI_INT, &n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    for(uint32_t i = 0; i < n; i++) {
 
-    original_indices.resize(n);
+	for(uint32_t j = 0; j < number_of_features; j++) {
 
-    data_points_per_process.resize(n * number_of_features);
+	    if(input[i][j] < mins[j])
+	        mins[j] = input[i][j];
 
-    MPI_Scatterv(indices_of_points, num_of_points_to_cluster, displacements, MPI_INT, original_indices.data(),
-                  n, MPI_INT, 0, MPI_COMM_WORLD);
-
-    MPI_Scatterv(data_points.data(), count_points_per_process.data() , displacements_of_dataPoints.data(), MPI_FLOAT, data_points_per_process.data(),
-                   n * number_of_features, MPI_FLOAT, 0, MPI_COMM_WORLD);
-
-    /*copy the points alloted to the process of rank 'p' to dataset */
-    int32_t k = 0;
-
-    for(int32_t i = 0; i <  data_points_per_process.size(); i = i + number_of_features) {
-
-	std::vector<DATA_TYPE> point;
-
-	for(int32_t j = 0; j < number_of_features; j++) {
-
-	    point.push_back(data_points_per_process[i + j]);
-
+	    if(input[i][j] > maxs[j])
+	        maxs[j] = input[i][j];
 
 	}
-
-	Data pt = Data(point);
-	
-	pt.setIndex(original_indices[k]); //k will iterate original_indices upto n
-	
-	dataset.push_back(pt);
-	
-	k++;
-
-    }
-
-    /*Compute spatial index, neighbouring keys for all the points assigned to processes other than root.
-      They are already computed for the root process */
-    mins.resize(number_of_features, FLT_MAX);
-    maxs.resize(number_of_features, 0.0);
-    dimensions.resize(number_of_features, 0.0);
-
-    for(uint64_t i = 0; i < n; i++) {
-	    
-	auto& features = dataset[i].getFeatures();
-
-        for(uint64_t j = 0; j < number_of_features; j++) {
-
-	    if(features[j] < mins[j])
-                mins[j] = features[j];
-
-            if(features[j] > maxs[j])
-                maxs[j] = features[j];
-
-        }
 
     }
 
     /*Compute cell dimensions */
-    for(uint64_t j = 0; j < number_of_features; j++) {
+    for(uint32_t j = 0; j < number_of_features; j++) {
 
-        dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
-        total_cells *= dimensions[j];
+	dimensions[j] = std::ceil((maxs[j] - mins[j]) / (epsilon)) + 1;
+	total_cells *= dimensions[j];
 
     }
 
-    m_swapped_dimensions.resize(number_of_features, 0);
+    std::cout<<"Total cells  "<<total_cells<< std::endl;
 
+    std::vector<uint32_t> m_swapped_dimensions(number_of_features, 0);
     /*SWAP dimensions */
     std::iota(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), 0);
-
+    
     // swap the dimensions descending by their cell sizes
     std::sort(m_swapped_dimensions.begin(), m_swapped_dimensions.end(), [&] (size_t a, size_t b) {
-        return dimensions[a] < dimensions[b];
+            return dimensions[a] < dimensions[b];
     });
 
+    std::unordered_map<uint32_t, std::set<uint32_t>> neighbour_keys;
+
+    for(auto& ip:input) {
+
+        dataset.push_back(Data(ip));
+
+    }
+
+
     /*compute keys for all cells */
+    compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
+
+    std::cout<<"Keys computed"<<std::endl;
+
+    std::vector<std::vector<DATA_TYPE>> reordered_input;
+    std::map<uint32_t, uint32_t> map_to_original;
+    
+    /*Reorder the cells based on their spatial indexing */
+   
+    uint32_t counter = 0;
+
+    std::vector<bool> key_visited(spatial_index.size(), false);
+
+    for (auto& cell : spatial_index) {
+
+        auto& index  = cell.second;
+        
+	for(auto &pt:index) {
+
+            reordered_input.push_back(input[pt]);
+
+	    map_to_original[counter++] = pt; 
+
+	}
+
+    }
+
+    input.swap(reordered_input);
+
+    spatial_index.clear();
+
+    dataset.clear();
+
+    for(auto& ip:input) {
+
+        dataset.push_back(Data(ip));
+
+    }
+
+     /*compute keys again */
     compute_keys(dataset, n, spatial_index, m_swapped_dimensions, dimensions, mins, epsilon);
 
     for(auto& cell:spatial_index)
         cell_size[cell.first] = cell.second.size();
 
+    std::map<uint32_t,std::pair<uint32_t, uint32_t>> m_cell_index;
+
     /*Compute cell index */
-    uint64_t accumulator = 0;
+    uint32_t accumulator = 0;
 
-        // sum up the offset into the points array
+    // sum up the offset into the points array
     for (auto& cell : spatial_index) {
+            auto& index  = m_cell_index[cell.first];
+            index.first  = accumulator;
+            index.second = cell.second.size();
+            accumulator += cell.second.size();
     
-        auto& index  = m_cell_index[cell.first];
-        index.first  = accumulator;
-        index.second = cell.second.size();
-        accumulator += cell.second.size();
-
     }
 
     // introduce an end dummy
     m_cell_index[total_cells].first  = spatial_index.size();
     m_cell_index[total_cells].second = 0;
-
+    
     /*compute neighbouring cells */
 
     for(auto& cell : spatial_index) {
+    
+        std::vector<uint32_t> neighboring_cells;
+        neighboring_cells.reserve(std::pow(3, number_of_features));
+        neighboring_cells.push_back(cell.first);
 
-        std::vector<uint64_t> neighboring_cells = compute_neighbouring_keys(cell.first, m_swapped_dimensions,
-                                                                            dimensions, m_cell_index, number_of_features);
+        // cell accumulators
+        uint32_t cells_in_lower_space = 1;
+        uint32_t cells_in_current_space = 1;
+        uint32_t number_of_points = m_cell_index.find(cell.first)->second.second;
 
-        for(auto pt:neighboring_cells) {
+        // fetch all existing neighboring cells
+        for (size_t d : m_swapped_dimensions) {
+             cells_in_current_space *= dimensions[d];
 
-            neighbour_keys[cell.first].insert(pt);
+            for (size_t i = 0, end = neighboring_cells.size(); i < end; ++i) {
+                const uint32_t current_cell = neighboring_cells[i];
 
-        }
+                // check "left" neighbor - a.k.a the cell in the current dimension that has a lower number
+                const uint32_t left = current_cell - cells_in_lower_space;
+                const auto found_left = m_cell_index.find(left);
+                if (current_cell % cells_in_current_space >= cells_in_lower_space) {
+                    neighboring_cells.push_back(left);
+                    number_of_points += found_left != m_cell_index.end() ? found_left->second.second : 0;
+                }
+                // check "right" neighbor - a.k.a the cell in the current dimension that has a higher number
+                const uint32_t right = current_cell + cells_in_lower_space;
+                const auto found_right = m_cell_index.find(right);
+                if (current_cell % cells_in_current_space < cells_in_current_space - cells_in_lower_space) {
+                    neighboring_cells.push_back(right);
+                    number_of_points += found_right != m_cell_index.end() ? found_right->second.second : 0;
+                }
+            }
+            cells_in_lower_space = cells_in_current_space;
+       }
+
+       for(auto pt:neighboring_cells) {
+
+           neighbour_keys[cell.first].insert(pt);
+
+       }
 
     }
-
-    epsilon_square = epsilon * epsilon;
     
+    std::vector<std::vector<uint64_t>> core_points(n);
+    
+    std::vector<uint32_t> cluster_info(n, 0);
+    
+    std::cout << "Evaluating core points "<<std::endl;     
+   
     start_time = omp_get_wtime(); 
 
-    uint64_t num_clusters = 0;
+    uint32_t num_clusters = 0;
 
     uint64_t noise_points = 0;
 
-    std::map<uint64_t, std::vector<uint64_t>> clusters;
+    //#pragma omp parallel for //reduction(merge: core_points)
+    for (uint32_t i = 0; i < n; i++) {
 
-    for (uint64_t i = 0; i < n; i++) {
+	std::vector<uint64_t> cluster;
 
 	if(!dataset[i].isVisited()) { 
-        
-            std::vector<uint64_t> cluster;
+       
+	    std::queue<uint64_t> compute;
 
-	    std::vector<uint64_t> indices;
+	    compute.push(i);
+
+	    std::vector<uint32_t> vals;
 	    
-	    indices.push_back(i);
+	    uint32_t prev_key = INT_MAX;
 
-	    uint64_t prev_key = INT_MAX;
+	    while(!compute.empty()) {
 
-	    while(!indices.empty()) {
+		uint64_t index = compute.front();
 
-		std::set<uint64_t> vals_set;
+		compute.pop();
+
+		uint32_t cell_key = dataset[index].getCellNumber();
+
+		if(cell_key != prev_key) {
+
+		    vals.clear();
+
+                    std::set<uint32_t>& neighbouring_keys = neighbour_keys[cell_key];
+
+                    for(auto& pt : neighbouring_keys) {
+
+			/*only if a cell still contains points that are not added to a cluster */    
+                        auto& points = spatial_index[pt];
+			
+                        vals.insert(vals.end(), points.begin(), points.end());
+
+
+                    }
+
+		}
+                
+		std::vector<uint64_t> neighbours = getNeighbours(index, dataset, epsilon_square, number_of_features, vals);
+                
+		prev_key = cell_key;
+
+                if(neighbours.size() >= min_points) {
 		
-		const uint64_t indices_size = indices.size();
-		
-		//#pragma omp parallel for reduction(merge_set:vals_set)
-		for(uint64_t index = 0; index < indices_size; index++) {
-		
-		    uint64_t cell_key = dataset[indices[index]].getCellNumber();
+		    for(auto& pt:neighbours) {
 
-		    if(cell_key != prev_key) {
-
-                     /*only if a cell still contains points that are not added to a cluster
-			     * Using set to prevent duplicate entry of points  */   
-
-			std::set<uint64_t>& neighbouring_keys = neighbour_keys[cell_key];
-
-			for(auto& pt : neighbouring_keys) {
+			if(!dataset[pt].visited) {
 		        
-			    if(cell_size[pt] > 0) {
-                        
-			        auto& points = spatial_index[pt];
+			    compute.push(pt);
 
-			        for(auto& p:points) {
+		            core_points[i].push_back(pt); //insert only if the point is not already a part of another cluster
 
-			            if(!dataset[p].isVisited())
-				        vals_set.insert(p);
+                            //#pragma omp atomic write			    
+			    dataset[pt].visited = true;
 
-			        }
+			}
 
-                             }
-
-			 } 
-		    
 		    }
 
-		    prev_key = cell_key;
-		
-	        }
-                
-		std::vector<uint64_t> vals(vals_set.begin(), vals_set.end());
-		
-		std::set<uint64_t> neighbours = getNeighbours(indices, dataset, epsilon_square, number_of_features, vals);
-               
-		std::vector<uint64_t> neighbours_v(neighbours.begin(), neighbours.end());
-	        
-		indices.clear();
+ 		    #if 0
+		    std::cout << " cluster contents are  "<<std::endl;
+                        
+		     for(auto& i: core_points[i])
+                         std::cout<<i<<" ";
 
-		for(uint64_t k = 0; k < neighbours_v.size(); k++) {
-
-		    indices.push_back(neighbours_v[k]);
-		    
-		    cluster.push_back(neighbours_v[k]);
-
-		    /*This is to keep a tab of the number of points that are not added yet to a cluster */
-		    cell_size[dataset[neighbours_v[k]].getCellNumber()]--;
-
-		    dataset[neighbours_v[k]].markVisited();
+                     std::cout<<std::endl;
+		    #endif
 
 		}
 
-
-	    }
-
-	    num_clusters++;	    
-    	    
-	    for(auto& point:cluster) {
-
-	        clusters[num_clusters].push_back(dataset[point].getIndex());
 
 	    }
 
@@ -692,166 +395,52 @@ int main(int argc, char** argv) {
     
     end_time = omp_get_wtime();
 
-    /*Local Cluster computation done. Prepare to send the points to root process */
-    std::vector<uint32_t> cluster_lengths;
+    std::cout << "Time to evaluate core points " << (end_time - start_time) <<"s"<< std::endl;
 
-    std::vector<uint32_t> cluster_points;
+    std::cout << "Assigning clusters " << std::endl;
 
-    for(auto& cluster:clusters) {
+    start_time = omp_get_wtime();
 
-        cluster_lengths.push_back(cluster.second.size());
+    noise_points = input.size();
 
-	for(auto& point_in_cluster:cluster.second) {
+    for(auto& p:core_points) {
 
-	    cluster_points.push_back(point_in_cluster);
-
-	}
-
-    }
-
-    /*First transmit the number of clusters in each process to each of the root process*/
-    if(rank == 0) {
-
-        count_of_clusters_per_process.resize(num_of_procs);
-
-    }
-
-    MPI_Gather(&num_clusters, 1, MPI_INT, count_of_clusters_per_process.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    std::vector<int32_t> displacements_cluster_len(num_of_procs);
-    
-    if(rank == 0) {
-
-	/*stores the length of each of the clusters */
-	all_cluster_lens.resize(std::reduce(count_of_clusters_per_process.begin(), count_of_clusters_per_process.end()));
-
-	displacements_cluster_len[0] = 0;
-
-	for (uint32_t i = 1; i < count_of_clusters_per_process.size(); i++) {
-          
-            displacements_cluster_len[i] = displacements_cluster_len[i-1] + count_of_clusters_per_process[i-1];
+        if(p.size())	{
         
-	}
-
-    }
-    
-    MPI_Gatherv(cluster_lengths.data(), num_clusters, MPI_INT,
-                all_cluster_lens.data(), count_of_clusters_per_process.data(), displacements_cluster_len.data(), MPI_INT,
-                0, MPI_COMM_WORLD);
-
-    /*Now we have the lenght of each of the clusters from each process 
-     *
-     * Let us now collect the points that have been clustered */
-     std::vector<int32_t> indices_of_all_points;
-    
-    if(rank == 0) {
-
-	/*each child process will send number_of_clusters * size of each cluster */
-	for(uint32_t i = 1; i < num_of_procs;i ++) {
-
-	      displacements_cluster_len[i] = displacements_cluster_len[i-1] + num_of_points_to_cluster[i - 1];
-
-
-	}
-
-	indices_of_all_points.resize(num_of_points_distributed);
-
-    }
-
-    MPI_Gatherv(cluster_points.data(), n, MPI_INT,
-                indices_of_all_points.data(), num_of_points_to_cluster, displacements_cluster_len.data(), MPI_INT,
-                0, MPI_COMM_WORLD);
-
-    if(rank == 0) {
-
-        std::cout << "Clustering completed " <<std::endl;
-
-	uint32_t i = 0;
-
-	uint32_t cluster_count = 0;
-
-	std::map<uint32_t, std::set<uint32_t>> clusters;
-
-        while(i < indices_of_all_points.size()) {
-        
-	    for(uint32_t k = 0; k < all_cluster_lens[cluster_count]; k++) {
-
-                clusters[cluster_count].insert(indices_of_all_points[i + k]);
-
-	    }
-
-	    i += all_cluster_lens[cluster_count];
-
-	    cluster_count++;
+	    noise_points -= p.size();
+     
+            num_clusters++;
 
         }
-
-	for(auto it = clusters.begin(); it != clusters.end(); it++) {
-
-	    for(auto jt = std::next(it); jt != clusters.end();) {
-
-	        std::set<uint32_t> intersect;
-	    
-		set_intersection((*it).second.begin(), (*it).second.end(), (*jt).second.begin(), (*jt).second.end(),
-                 	     std::inserter(intersect, intersect.begin()));
-
-		if(intersect.size() > 0) {
-
-		    (*it).second.insert((*jt).second.begin(), (*jt).second.end());
-
-		     jt = clusters.erase(jt);
-
-		}
-		else {
-
-		    ++jt;
-
-		}
-
-	     }
-
-	}
-
-        cluster_count = 0;
-	for(auto& p: clusters) {
-
-	    if(p.second.size() >= min_points) {
-
-		cluster_count++;
-
-	        for(auto& pt:p.second) {
-
-		    original_dataset[pt].setClusterInfo(cluster_count);
-
-		}
-
-	    }
-	    else {
-
-	        noise_points += p.second.size();
-
-	    }
-
-        }
-
-	std::cout << "Merging of clusters completed " << std::endl;
-        std::cout <<" Number of clusters : "<< cluster_count <<std::endl;
-	std::cout <<" Number of noise points : "<< noise_points << std::endl;
-
-	std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
-        std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
-
-        start_time = omp_get_wtime();
-
-        Util::writeToCSVfile(original_dataset, output_filename);
-
-        end_time = omp_get_wtime();
-
-        std::cout << "Time to write output to file " << (end_time - start_time) <<"s"<< std::endl;
-
+    
     }
 
-    MPI_Finalize();
+    end_time = omp_get_wtime();
+
+    noise_points = input.size() - num_clusters;
+
+    std::cout << "Time to assign clusters " << (end_time - start_time) <<"s"<< std::endl;
+
+    std::cout << " Clustering completed " << std::endl;
+    std::cout <<" Number of clusters : "<<num_clusters<<std::endl;
+    std::cout <<" Noise points : "<<noise_points<<std::endl;
+    std::cout << "Writing data and their cluster labels to output file "<<output_filename<<std::endl;
+    std::cout << "Points with cluster label 0 are Noise points "<<std::endl;
+
+    start_time = omp_get_wtime();
+    
+    Util::writeToCSVfile(input, cluster_info, output_filename);
+
+    end_time = omp_get_wtime();
+
+    std::cout << "Time to write output to file " << (end_time - start_time) <<"s"<< std::endl;
+
+    }
+    catch (const std::exception& e) {
+
+            std::cout<<e.what()<<std::endl;
+
+    }
 
     return 0;
     
